@@ -798,12 +798,6 @@ public class Config extends ConfigBase {
     public static int rpc_port = 9020;
 
     /**
-     * Arrow Flight SQL server port
-     */
-    @ConfField
-    public static int arrow_flight_port = 9408;
-
-    /**
      * The connection timeout and socket timeout config for thrift server
      * The value for thrift_client_timeout_ms is set to be larger than zero to prevent
      * some hang up problems in java.net.SocketInputStream.socketRead0
@@ -2046,6 +2040,9 @@ public class Config extends ConfigBase {
     @ConfField
     public static long statistic_dict_columns = 100000;
 
+    @ConfField
+    public static int dict_collect_thread_pool_size = 16;
+
     /**
      * The column statistic cache update interval
      */
@@ -2623,6 +2620,15 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static int starmgr_grpc_timeout_seconds = 5;
+
+    @ConfField(mutable = true)
+    public static int star_client_read_timeout_seconds = 15;
+
+    @ConfField(mutable = true)
+    public static int star_client_list_timeout_seconds = 30;
+
+    @ConfField(mutable = true)
+    public static int star_client_write_timeout_seconds = 30;
 
     // ***********************************************************
     // * END: of Cloud native meta server related configurations
@@ -3275,6 +3281,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static long black_host_connect_failures_within_time = 5;
 
+    @ConfField(mutable = true, comment = "The minimal time in milliseconds for the node to stay in the blocklist")
+    public static long black_host_penalty_min_ms = 500; // 500ms
+
     @ConfField(mutable = false)
     public static int jdbc_connection_pool_size = 8;
 
@@ -3349,6 +3358,12 @@ public class Config extends ConfigBase {
     public static int batch_write_idle_ms = 3600000;
 
     public static int batch_write_executor_threads_num = 4096;
+
+    /**
+     * Enable Arrow Flight SQL server only when the port is set to positive value.
+     */
+    @ConfField
+    public static int arrow_flight_port = -1;
 
     @ConfField(mutable = true)
     public static int arrow_token_cache_size = 1024;

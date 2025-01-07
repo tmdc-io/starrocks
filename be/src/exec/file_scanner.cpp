@@ -46,6 +46,7 @@ FileScanner::FileScanner(starrocks::RuntimeState* state, starrocks::RuntimeProfi
           _row_desc(nullptr),
           _strict_mode(false),
           _error_counter(0),
+          _file_scan_type(TFileScanType::LOAD),
           _schema_only(schema_only) {}
 
 FileScanner::~FileScanner() = default;
@@ -133,6 +134,10 @@ Status FileScanner::open() {
 
     if (_params.__isset.strict_mode) {
         _strict_mode = _params.strict_mode;
+    }
+
+    if (_params.__isset.file_scan_type) {
+        _file_scan_type = _params.file_scan_type;
     }
 
     if (_strict_mode && !_params.__isset.dest_sid_to_src_sid_without_trans) {
@@ -442,6 +447,11 @@ Status FileScanner::sample_schema(RuntimeState* state, const TBrokerScanRange& s
             break;
 
         case TFileFormatType::FORMAT_CSV_PLAIN:
+        case TFileFormatType::FORMAT_CSV_GZ:
+        case TFileFormatType::FORMAT_CSV_BZ2:
+        case TFileFormatType::FORMAT_CSV_LZ4_FRAME:
+        case TFileFormatType::FORMAT_CSV_DEFLATE:
+        case TFileFormatType::FORMAT_CSV_ZSTD:
             p_scanner = std::make_unique<CSVScanner>(state, &profile, sample_range, &counter, true);
             break;
 

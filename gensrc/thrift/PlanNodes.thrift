@@ -134,6 +134,10 @@ struct TInternalScanRange {
   // used for per-bucket compute optimize
   13: optional i32 bucket_sequence
   14: optional i64 gtid
+  // skip page cache when access page data
+  15: optional bool skip_page_cache = false;
+  // skip local disk data cache when access page data
+  16: optional bool skip_disk_cache = false;
 }
 
 enum TFileFormatType {
@@ -209,6 +213,13 @@ struct THdfsProperties {
   12: optional CloudConfiguration.TCloudConfiguration cloud_configuration
 }
 
+enum TFileScanType {
+    // broker load, stream load, except insert from files
+    LOAD,
+    FILES_INSERT,
+    FILES_QUERY
+}
+
 struct TBrokerScanRangeParams {
     1: required i8 column_separator;
     2: required i8 row_delimiter;
@@ -271,6 +282,7 @@ struct TBrokerScanRangeParams {
     30: optional i64 schema_sample_file_count
     31: optional i64 schema_sample_file_row_count
     32: optional bool flexible_column_mapping
+    33: optional TFileScanType file_scan_type
 }
 
 // Broker scan range

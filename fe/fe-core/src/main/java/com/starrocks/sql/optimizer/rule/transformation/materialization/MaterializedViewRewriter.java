@@ -1328,6 +1328,11 @@ public class MaterializedViewRewriter implements IMaterializedViewRewriter {
                 rewriteContext.getQueryPredicateSplit(),
                 rewriteContext.getMvPredicateSplit(),
                 true);
+        // check mv context again if mv can be applied for rewrite.
+        if (materializationContext.isNoRewrite()) {
+            logMVRewrite(mvRewriteContext, "MV cannot be applied for rewrite");
+            return null;
+        }
 
         MVCompensation mvCompensation = materializationContext.getMvCompensation();
         boolean isTransparentRewrite = mvCompensation.isTransparentRewrite();
@@ -2226,11 +2231,10 @@ public class MaterializedViewRewriter implements IMaterializedViewRewriter {
         // keys of queryColumnRefMap and mvColumnRefMap are the same
         List<ColumnRefOperator> originalOutputColumns =
                 queryColumnRefMap.keySet().stream().collect(Collectors.toList());
-
         // rewrite query
         OptExpressionDuplicator duplicator = new OptExpressionDuplicator(materializationContext);
-        // NOTE: selected partitions and tablets should be deduced again.
-        OptExpression newQueryInput = duplicator.duplicate(queryInput, true);
+        // don't reset selected partition ids for query input, because query's partition ranges should not be extended.
+        OptExpression newQueryInput = duplicator.duplicate(queryInput, false);
         List<ColumnRefOperator> newQueryOutputColumns = duplicator.getMappedColumns(originalOutputColumns);
 
         // rewrite viewInput

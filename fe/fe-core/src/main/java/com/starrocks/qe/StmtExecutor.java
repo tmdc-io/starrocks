@@ -187,6 +187,7 @@ import com.starrocks.sql.ast.UseCatalogStmt;
 import com.starrocks.sql.ast.UseDbStmt;
 import com.starrocks.sql.ast.UserVariable;
 import com.starrocks.sql.ast.feedback.PlanAdvisorStmt;
+import com.starrocks.sql.ast.translate.TranslateStmt;
 import com.starrocks.sql.ast.warehouse.SetWarehouseStmt;
 import com.starrocks.sql.common.AuditEncryptionChecker;
 import com.starrocks.sql.common.DmlException;
@@ -721,11 +722,8 @@ public class StmtExecutor {
                         }
 
                         if (isAsync) {
-                            int timeout = context.getSessionVariable().getQueryTimeoutS();
-                            QeProcessorImpl.INSTANCE
-                                    .monitorQuery(context.getExecutionId(),
-                                            System.currentTimeMillis() + timeout * 1000L +
-                                                    context.getSessionVariable().getProfileTimeout() * 1000L);
+                            QeProcessorImpl.INSTANCE.monitorQuery(context.getExecutionId(),
+                                    System.currentTimeMillis() + context.getSessionVariable().getProfileTimeout() * 1000L);
                         } else {
                             QeProcessorImpl.INSTANCE.unregisterQuery(context.getExecutionId());
                         }
@@ -789,6 +787,8 @@ public class StmtExecutor {
                 handleDelBackendBlackListStmt();
             } else if (parsedStmt instanceof PlanAdvisorStmt) {
                 handlePlanAdvisorStmt();
+            } else if (parsedStmt instanceof TranslateStmt) {
+                handleTranslateStmt();
             } else {
                 context.getState().setError("Do not support this query.");
             }
@@ -1346,7 +1346,7 @@ public class StmtExecutor {
                 sendFields(colNames, outputExprs);
             }
         }
-        
+
         if (batch != null) {
             statisticsForAuditLog = batch.getQueryStatistics();
             if (!isOutfileQuery) {
@@ -1798,6 +1798,11 @@ public class StmtExecutor {
             return;
         }
         context.getState().setOk();
+    }
+
+    private void handleTranslateStmt() throws IOException {
+        ShowResultSet resultSet = TranslateExecutor.execute((TranslateStmt) parsedStmt);
+        sendShowResult(resultSet);
     }
 
     private void sendMetaData(ShowResultSetMetaData metaData) throws IOException {

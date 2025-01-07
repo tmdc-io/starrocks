@@ -3555,8 +3555,7 @@ TEST_F(TabletUpdatesTest, test_normal_apply_retry) {
         ASSERT_TRUE(_tablet->rowset_commit(version, rs).ok());
         ASSERT_EQ(version, _tablet->updates()->max_version());
 
-        // Wait for a short duration and check error state
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        read_tablet(_tablet, version);
         ASSERT_TRUE(_tablet->updates()->is_error());
 
         // Disable fail point and reset error
@@ -3695,14 +3694,14 @@ TEST_F(TabletUpdatesTest, test_compaction_apply_retry) {
         _tablet->updates()->check_for_apply();
 
         // Verify the read result
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        _tablet->updates()->wait_apply_done();
         ASSERT_TRUE(_tablet->updates()->is_error());
         ASSERT_TRUE(!_tablet->updates()->compaction_running());
     };
 
     _tablet->updates()->stop_compaction(false);
     _tablet->updates()->compaction(_compaction_mem_tracker.get());
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    _tablet->updates()->wait_apply_done();
     ASSERT_TRUE(_tablet->updates()->is_error());
 
     // 2. get pindex meta failed
@@ -3919,6 +3918,20 @@ TEST_F(TabletUpdatesTest, test_skip_schema) {
         ASSERT_EQ(rs3->tablet_schema()->id(), old_schema_id);
         ASSERT_EQ(rs2->tablet_schema()->id(), old_schema_id);
         ASSERT_EQ(rs1->tablet_schema()->id(), old_schema_id);
+    }
+
+    {
+        PFailPointTriggerMode trigger_mode;
+        trigger_mode.set_mode(FailPointTriggerModeType::ENABLE);
+        std::string fp_name = "tablet_get_visible_rowset";
+        auto fp = starrocks::failpoint::FailPointRegistry::GetInstance()->get(fp_name);
+        fp->setMode(trigger_mode);
+
+        auto tmp_tablet1 = create_tablet(rand(), rand(), false, _tablet->tablet_schema()->id() + 1,
+                                         _tablet->tablet_schema()->schema_version() + 1);
+        _tablet->update_max_version_schema(tmp_tablet1->tablet_schema());
+        trigger_mode.set_mode(FailPointTriggerModeType::DISABLE);
+        fp->setMode(trigger_mode);
     }
 }
 

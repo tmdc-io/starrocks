@@ -178,6 +178,10 @@ import com.starrocks.thrift.TBatchReportExecStatusParams;
 import com.starrocks.thrift.TBatchReportExecStatusResult;
 import com.starrocks.thrift.TBeginRemoteTxnRequest;
 import com.starrocks.thrift.TBeginRemoteTxnResponse;
+import com.starrocks.thrift.TClusterSnapshotJobsRequest;
+import com.starrocks.thrift.TClusterSnapshotJobsResponse;
+import com.starrocks.thrift.TClusterSnapshotsRequest;
+import com.starrocks.thrift.TClusterSnapshotsResponse;
 import com.starrocks.thrift.TColumnDef;
 import com.starrocks.thrift.TColumnDesc;
 import com.starrocks.thrift.TCommitRemoteTxnRequest;
@@ -333,6 +337,7 @@ import com.starrocks.transaction.TabletCommitInfo;
 import com.starrocks.transaction.TabletFailInfo;
 import com.starrocks.transaction.TransactionNotFoundException;
 import com.starrocks.transaction.TransactionState;
+import com.starrocks.transaction.TransactionStateSnapshot;
 import com.starrocks.transaction.TxnCommitAttachment;
 import com.starrocks.warehouse.Warehouse;
 import com.starrocks.warehouse.WarehouseInfo;
@@ -1445,10 +1450,11 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         }
 
         try {
-            TTransactionStatus status =
-                    GlobalStateMgr.getCurrentState().getGlobalTransactionMgr().getTxnStatus(db, request.getTxnId());
-            LOG.debug("txn {} status is {}", request.getTxnId(), status);
-            result.setStatus(status);
+            TransactionStateSnapshot transactionStateSnapshot =
+                    GlobalStateMgr.getCurrentState().getGlobalTransactionMgr().getTxnState(db, request.getTxnId());
+            LOG.debug("txn {} status is {}", request.getTxnId(), transactionStateSnapshot);
+            result.setStatus(transactionStateSnapshot.getStatus().toThrift());
+            result.setReason(transactionStateSnapshot.getReason());
         } catch (Throwable e) {
             result.setStatus(TTransactionStatus.UNKNOWN);
             LOG.warn("catch unknown result.", e);
@@ -1717,6 +1723,15 @@ public class FrontendServiceImpl implements FrontendService.Iface {
     public TMergeCommitResult requestMergeCommit(TMergeCommitRequest request) throws TException {
         TMergeCommitResult result = new TMergeCommitResult();
         try {
+            GlobalStateMgr globalStateMgr = GlobalStateMgr.getCurrentState();
+            Database db = globalStateMgr.getLocalMetastore().getDb(request.getDb());
+            if (db == null) {
+                throw new UserException(String.format("unknown database [%s]", request.getDb()));
+            }
+            Table table = db.getTable(request.getTbl());
+            if (table == null) {
+                throw new UserException(String.format("unknown table [%s.%s]", request.getDb(), request.getTbl()));
+            }
             checkPasswordAndLoadPriv(request.getUser(), request.getPasswd(), request.getDb(),
                     request.getTbl(), request.getUser_ip());
             TableId tableId = new TableId(request.getDb(), request.getTbl());
@@ -3005,5 +3020,15 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             response.setStatus(status);
             return response;
         }
+    }
+
+    @Override
+    public TClusterSnapshotsResponse getClusterSnapshotsInfo(TClusterSnapshotsRequest params) {
+        return new TClusterSnapshotsResponse();
+    }
+
+    @Override
+    public TClusterSnapshotJobsResponse getClusterSnapshotJobsInfo(TClusterSnapshotJobsRequest params) {
+        return new TClusterSnapshotJobsResponse();
     }
 }

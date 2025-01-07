@@ -392,8 +392,7 @@ CONF_Int32(be_http_num_workers, "48");
 // Period to update rate counters and sampling counters in ms.
 CONF_mInt32(periodic_counter_update_period_ms, "500");
 
-// Port to start debug Arrow Flight SQL server in BE
-CONF_Int32(be_arrow_port, "9419");
+CONF_Int32(arrow_flight_port, "-1");
 
 // Used for mini Load. mini load data file will be removed after this time.
 CONF_Int64(load_data_reserve_hours, "4");
@@ -873,7 +872,7 @@ CONF_Int64(object_storage_connect_timeout_ms, "-1");
 // Note that for Curl this config is converted to seconds by rounding down to the nearest whole second except when the
 // value is greater than 0 and less than 1000.
 // When it's 0, low speed limit check will be disabled.
-CONF_Int64(object_storage_request_timeout_ms, "-1");
+CONF_mInt64(object_storage_request_timeout_ms, "-1");
 // Request timeout for object storage specialized for rename_file operation.
 // if this parameter is 0, use object_storage_request_timeout_ms instead.
 CONF_Int64(object_storage_rename_file_request_timeout_ms, "30000");
@@ -1032,6 +1031,9 @@ CONF_mInt32(starlet_fs_read_prefetch_threadpool_size, "128");
 CONF_mInt32(starlet_fslib_s3client_nonread_max_retries, "5");
 CONF_mInt32(starlet_fslib_s3client_nonread_retry_scale_factor, "200");
 CONF_mInt32(starlet_fslib_s3client_connect_timeout_ms, "1000");
+// make starlet_fslib_s3client_request_timeout_ms as an alias of the object_storage_request_timeout_ms
+// NOTE: need to handle the negative value properly
+CONF_Alias(object_storage_request_timeout_ms, starlet_fslib_s3client_request_timeout_ms);
 CONF_mInt32(starlet_delete_files_max_key_in_batch, "1000");
 #endif
 
@@ -1077,7 +1079,7 @@ CONF_String(dependency_librdkafka_debug, "all");
 // DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, WARN by default
 CONF_mInt16(pulsar_client_log_level, "2");
 
-// max loop count when be waiting its fragments finish
+// max loop count when be waiting its fragments finish. It has no effect if the var is configured with value <= 0.
 CONF_Int64(loop_count_wait_fragments_finish, "0");
 
 // the maximum number of connections in the connection pool for a single jdbc url
@@ -1506,6 +1508,12 @@ CONF_mInt32(max_committed_without_schema_rowset, "1000");
 
 CONF_mInt32(apply_version_slow_log_sec, "30");
 
+// The time that stream load pipe waits for the input. The pipe will block the pipeline scan executor
+// util the input is available or the timeout is reached. Don't set this value too large to avoid
+// blocking the pipeline scan executor for a long time.
+CONF_mInt32(merge_commit_stream_load_pipe_block_wait_us, "500");
+// The maximum number of bytes that the merge commit stream load pipe can buffer.
+CONF_mInt64(merge_commit_stream_load_pipe_max_buffered_bytes, "1073741824");
 CONF_Int32(batch_write_thread_pool_num_min, "0");
 CONF_Int32(batch_write_thread_pool_num_max, "512");
 CONF_Int32(batch_write_thread_pool_queue_size, "4096");
