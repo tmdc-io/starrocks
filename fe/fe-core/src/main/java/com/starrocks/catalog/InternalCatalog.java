@@ -20,7 +20,7 @@ import com.starrocks.analysis.TableName;
 import java.util.Map;
 
 public class InternalCatalog extends Catalog {
-    public static final String DEFAULT_INTERNAL_CATALOG_NAME = "default_catalog";
+    public static final String DEFAULT_INTERNAL_CATALOG_NAME = "shared";
     public static final long DEFAULT_INTERNAL_CATALOG_ID = -11;
 
     public InternalCatalog(long id, String name, Map<String, String> config, String comment) {

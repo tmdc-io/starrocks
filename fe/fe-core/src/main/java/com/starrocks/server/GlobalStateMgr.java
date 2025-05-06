@@ -50,6 +50,8 @@ import com.starrocks.authentication.AuthenticationMgr;
 import com.starrocks.authorization.AccessControlProvider;
 import com.starrocks.authorization.AuthorizationMgr;
 import com.starrocks.authorization.DefaultAuthorizationProvider;
+import com.starrocks.authorization.Heimdall;
+import com.starrocks.authorization.HeimdallAccessController;
 import com.starrocks.authorization.NativeAccessController;
 import com.starrocks.authorization.PrivilegeException;
 import com.starrocks.authorization.ranger.starrocks.RangerStarRocksAccessController;
@@ -517,6 +519,8 @@ public class GlobalStateMgr {
 
     private final ClusterSnapshotMgr clusterSnapshotMgr;
 
+    private final Heimdall heimdall;
+
     public NodeMgr getNodeMgr() {
         return nodeMgr;
     }
@@ -680,7 +684,7 @@ public class GlobalStateMgr {
         this.authenticationMgr = new AuthenticationMgr();
         this.domainResolver = new DomainResolver(authenticationMgr);
         this.authorizationMgr = new AuthorizationMgr(this, new DefaultAuthorizationProvider());
-
+        this.heimdall = new Heimdall();
         this.resourceGroupMgr = new ResourceGroupMgr();
 
         this.esRepository = new EsRepository();
@@ -809,6 +813,9 @@ public class GlobalStateMgr {
         AccessControlProvider accessControlProvider;
         if (Config.access_control.equals("ranger")) {
             accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(), new RangerStarRocksAccessController());
+        } else if (Config.access_control.equals("heimdall")) {
+            accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(),
+                    new HeimdallAccessController());
         } else {
             accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(), new NativeAccessController());
         }
@@ -2709,5 +2716,9 @@ public class GlobalStateMgr {
     public void shutdown() {
         // in a single thread.
         connectorMgr.shutdown();
+    }
+
+    public Heimdall getHeimdall() {
+        return this.heimdall;
     }
 }

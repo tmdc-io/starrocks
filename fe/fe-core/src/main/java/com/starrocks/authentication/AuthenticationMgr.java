@@ -15,9 +15,11 @@
 
 package com.starrocks.authentication;
 
+import com.google.api.client.util.Lists;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.StarRocksFE;
 import com.starrocks.authorization.AuthorizationMgr;
+import com.starrocks.authorization.PrivilegeBuiltinConstants;
 import com.starrocks.authorization.PrivilegeException;
 import com.starrocks.authorization.UserPrivilegeCollectionV2;
 import com.starrocks.common.Config;
@@ -35,7 +37,9 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.CreateUserStmt;
 import com.starrocks.sql.ast.DropUserStmt;
+import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
+import com.starrocks.sql.parser.NodePosition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -121,6 +125,9 @@ public class AuthenticationMgr {
                 LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
+        // DataOS Heimdall
+        AuthenticationProviderFactory.installPlugin(
+                HeimdallAuthenticationProvider.PLUGIN_NAME, new HeimdallAuthenticationProvider());
 
         // default user
         userToAuthenticationInfo = new UserAuthInfoTreeMap();
@@ -213,7 +220,8 @@ public class AuthenticationMgr {
         }
     }
 
-    public Map.Entry<UserIdentity, UserAuthenticationInfo> getBestMatchedUserIdentity(
+    // Internal method to look a user up from cache
+    public Map.Entry<UserIdentity, UserAuthenticationInfo> getBestMatchedUserIdentityInternal(
             String remoteUser, String remoteHost) {
         try {
             readLock();
@@ -223,6 +231,46 @@ public class AuthenticationMgr {
         } finally {
             readUnlock();
         }
+    }
+
+    // This is a wrapper method.
+    // 1. Checks if the user exists,
+    // 2. If not, and Heimdall plugin is installed,
+    // It creates a user automatically if Heimdall plugin is installed.
+    public Map.Entry<UserIdentity, UserAuthenticationInfo> getBestMatchedUserIdentity(
+            String remoteUser, String remoteHost) {
+        Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity =
+                getBestMatchedUserIdentityInternal(remoteUser, remoteHost);
+
+        if (matchedUserIdentity == null) {
+            try {
+                String authPluginName = HeimdallAuthenticationProvider.PLUGIN_NAME.toUpperCase();
+                AuthenticationProvider provider = AuthenticationProviderFactory.create(authPluginName);
+                if (provider != null) {
+                    // TODO: Check with Heimdall here?
+                    UserIdentity userIdentity = new UserIdentity(remoteUser, UserAuthenticationInfo.ANY_HOST);
+                    UserAuthOption userAuthOption = new UserAuthOption(new String(MysqlPassword.EMPTY_PASSWORD),
+                            authPluginName, null, true, NodePosition.ZERO);
+
+                    List<String> defRoles = Lists.newArrayList();
+                    defRoles.add(PrivilegeBuiltinConstants.PUBLIC_ROLE_NAME);
+
+                    CreateUserStmt stmt = new CreateUserStmt(userIdentity, true, userAuthOption,
+                            defRoles, null, NodePosition.ZERO);
+                    stmt.setAuthenticationInfo(provider.analyzeAuthOption(userIdentity, userAuthOption));
+
+                    createUser(stmt);
+                    LOG.info("user '{}' is created", userIdentity);
+
+                    // Return this newly created user
+                    matchedUserIdentity = getBestMatchedUserIdentityInternal(remoteUser, remoteHost);
+                }
+            } catch (DdlException | AuthenticationException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        return matchedUserIdentity;
     }
 
     private UserIdentity checkPasswordForNative(

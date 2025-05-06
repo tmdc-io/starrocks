@@ -36,6 +36,7 @@ package com.starrocks.mysql;
 
 import com.google.common.base.Strings;
 import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.authentication.HeimdallAuthenticationProvider;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
@@ -242,6 +243,21 @@ public class MysqlProto {
             return Pair.create(false, null);
         }
 
+        // Heimdall
+        // mysql_clear_password cannot be specified in mariadb client, so if the user is a Heimdall user,
+        // switch to mysql_clear_password plugin.
+
+        // $ mysql -P9030 -h127.0.0.1 -uUser
+        // --default-auth mysql_clear_password
+        // --enable-cleartext-plugin
+        // -pPassword
+        if (!authPluginName.equals(MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME)
+                && isHeimdallUser(authPacket.getUser(), context)) {
+            LOG.info("switch-auth-plugin: {} => {}", authPluginName,
+                    MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME);
+            return Pair.create(true, MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME);
+        }
+
         // kerberos
         if (authPluginName.equals(MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT)) {
             return Pair.create(true, MysqlHandshakePacket.AUTHENTICATION_KERBEROS_CLIENT);
@@ -271,6 +287,14 @@ public class MysqlProto {
         // If the user can not be found in local, and there is more than 1 auth type in authentication_chain.
         // It is speculated that the user may be a ldap user.
         return localUser == null && Config.authentication_chain.length > 1;
+    }
+
+    //
+    private static boolean isHeimdallUser(String user, ConnectContext context) {
+        Map.Entry<UserIdentity, UserAuthenticationInfo> localUser = context.getGlobalStateMgr().getAuthenticationMgr()
+                .getBestMatchedUserIdentity(user, context.getMysqlChannel().getRemoteIp());
+        return localUser != null && Objects.equals(localUser.getValue().getAuthPlugin(),
+                HeimdallAuthenticationProvider.PLUGIN_NAME);
     }
 
     private static MysqlAuthPacket readAuthPacket(ConnectContext context) throws IOException {
