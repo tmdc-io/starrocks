@@ -539,6 +539,7 @@ public class SharedDataStorageVolumeMgr extends StorageVolumeMgr {
 
     private Map<String, String> parseParamsFromConfig() {
         Map<String, String> params = new HashMap<>();
+        params.put(CloudConfigurationConstants.DATAOS_SECRET, Config.dataos_secret);
         switch (Config.cloud_native_storage_type.toLowerCase()) {
             case "s3":
                 params.put(CloudConfigurationConstants.AWS_S3_ACCESS_KEY, Config.aws_s3_access_key);

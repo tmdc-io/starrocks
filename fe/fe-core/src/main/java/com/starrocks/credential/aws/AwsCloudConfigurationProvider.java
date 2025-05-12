@@ -18,6 +18,8 @@ import com.google.common.base.Preconditions;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Map;
 
@@ -48,8 +50,10 @@ import static com.starrocks.connector.share.credential.CloudConfigurationConstan
 import static com.starrocks.connector.share.credential.CloudConfigurationConstants.DEFAULT_AWS_REGION;
 
 public class AwsCloudConfigurationProvider implements CloudConfigurationProvider {
+    private static final Logger LOG = LogManager.getLogger(AwsCloudConfigurationProvider.class);
 
     public AwsCloudCredential buildGlueCloudCredential(HiveConf hiveConf) {
+        LOG.info(">> build >>> Glue >> {}", hiveConf.getAllProperties());
         Preconditions.checkNotNull(hiveConf);
         AwsCloudCredential awsCloudCredential = new AwsCloudCredential(
                 hiveConf.getBoolean(AWS_GLUE_USE_AWS_SDK_DEFAULT_BEHAVIOR, false),
@@ -72,6 +76,7 @@ public class AwsCloudConfigurationProvider implements CloudConfigurationProvider
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
+        LOG.info(">> build >>> S3 >> {}", properties);
         Preconditions.checkNotNull(properties);
         AwsCloudCredential awsCloudCredential = new AwsCloudCredential(
                 Boolean.parseBoolean(properties.getOrDefault(AWS_S3_USE_AWS_SDK_DEFAULT_BEHAVIOR, "false")),

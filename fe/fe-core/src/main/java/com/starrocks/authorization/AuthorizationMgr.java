@@ -158,7 +158,7 @@ public class AuthorizationMgr {
 
             // 2. builtin db_admin role
             rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.DB_ADMIN_ROLE_ID,
-                    PrivilegeBuiltinConstants.DB_ADMIN_ROLE_NAME, "built-in database administration role");
+                    PrivilegeBuiltinConstants.DB_ADMIN_ROLE_NAME, "built-in administration role");
             // System grant belong to db_admin
             List<PrivilegeType> dbAdminSystemGrant = Lists.newArrayList(
                     PrivilegeType.CREATE_RESOURCE,
@@ -187,45 +187,56 @@ public class AuthorizationMgr {
                     ObjectType.PIPE)) {
                 initPrivilegeCollectionAllObjects(rolePrivilegeCollection, t, provider.getAvailablePrivType(t));
             }
-            rolePrivilegeCollection.disableMutable(); // not mutable
 
-            // 3. cluster_admin
-            rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.CLUSTER_ADMIN_ROLE_ID,
-                    PrivilegeBuiltinConstants.CLUSTER_ADMIN_ROLE_NAME, "built-in cluster administration role");
-            // GRANT NODE ON SYSTEM
-            initPrivilegeCollections(
-                    rolePrivilegeCollection,
-                    ObjectType.SYSTEM,
-                    List.of(PrivilegeType.NODE, PrivilegeType.CREATE_WAREHOUSE),
-                    null,
-                    false);
-            initPrivilegeCollectionAllObjects(rolePrivilegeCollection, ObjectType.WAREHOUSE,
-                    provider.getAvailablePrivType(ObjectType.WAREHOUSE));
-            rolePrivilegeCollection.disableMutable();
-
-            // 4. user_admin
-            rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.USER_ADMIN_ROLE_ID,
-                    PrivilegeBuiltinConstants.USER_ADMIN_ROLE_NAME, "built-in user administration role");
-            // GRANT GRANT ON SYSTEM
-            initPrivilegeCollections(
-                    rolePrivilegeCollection,
-                    ObjectType.SYSTEM,
-                    Collections.singletonList(PrivilegeType.GRANT),
-                    null,
-                    false);
+            // Add user_admin permissions to db_admin, and disable user_admin
+            initPrivilegeCollections(rolePrivilegeCollection, ObjectType.SYSTEM,
+                    Collections.singletonList(PrivilegeType.GRANT), null, false);
             initPrivilegeCollectionAllObjects(rolePrivilegeCollection, ObjectType.USER,
                     provider.getAvailablePrivType(ObjectType.USER));
+
             rolePrivilegeCollection.disableMutable(); // not mutable
 
+            // Disable cluster_admin
+            // 3. cluster_admin
+            //rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.CLUSTER_ADMIN_ROLE_ID,
+            //        PrivilegeBuiltinConstants.CLUSTER_ADMIN_ROLE_NAME, "built-in cluster administration role");
+            // GRANT NODE ON SYSTEM
+            //initPrivilegeCollections(
+            //        rolePrivilegeCollection,
+            //       ObjectType.SYSTEM,
+            //        List.of(PrivilegeType.NODE, PrivilegeType.CREATE_WAREHOUSE),
+            //        null,
+            //        false);
+            //initPrivilegeCollectionAllObjects(rolePrivilegeCollection, ObjectType.WAREHOUSE,
+            //        provider.getAvailablePrivType(ObjectType.WAREHOUSE));
+            //rolePrivilegeCollection.disableMutable();
+
+            // 4. user_admin
+            //rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.USER_ADMIN_ROLE_ID,
+            //        PrivilegeBuiltinConstants.USER_ADMIN_ROLE_NAME, "built-in user administration role");
+            // GRANT GRANT ON SYSTEM
+            //initPrivilegeCollections(
+            //        rolePrivilegeCollection,
+            //        ObjectType.SYSTEM,
+            //        Collections.singletonList(PrivilegeType.GRANT),
+            //        null,
+            //        false);
+            //initPrivilegeCollectionAllObjects(rolePrivilegeCollection, ObjectType.USER,
+            //        provider.getAvailablePrivType(ObjectType.USER));
+            //rolePrivilegeCollection.disableMutable(); // not mutable
+
             // 5. public
+            // It is renamed to reader
             rolePrivilegeCollection = initBuiltinRoleUnlocked(PrivilegeBuiltinConstants.PUBLIC_ROLE_ID,
                     PrivilegeBuiltinConstants.PUBLIC_ROLE_NAME,
-                    "built-in public role which is owned by any user");
+                    "built-in role which is owned by any user");
             // GRANT SELECT ON ALL TABLES IN information_schema
             List<PEntryObject> object = Collections.singletonList(new TablePEntryObject(
                     Long.toString(SystemId.INFORMATION_SCHEMA_DB_ID), PrivilegeBuiltinConstants.ALL_TABLES_UUID));
             rolePrivilegeCollection.grant(ObjectType.TABLE, Collections.singletonList(PrivilegeType.SELECT), object,
-                    false);
+                    true);
+
+            // TODO: GRANT SELECT ON ALL TABLES IN ALL CATALOG
 
             // 6. builtin user root
             UserPrivilegeCollectionV2 rootCollection = new UserPrivilegeCollectionV2();

@@ -25,6 +25,9 @@ public class CloudConfigurationConstants {
      */
     public static final String DEFAULT_AWS_REGION = "us-east-1";
 
+    // TODO: do we need purpose too?
+    public static final String DATAOS_SECRET = "dataos.secret";
+
     // Credential for AWS s3
     public static final String AWS_S3_USE_AWS_SDK_DEFAULT_BEHAVIOR = "aws.s3.use_aws_sdk_default_behavior";
     public static final String AWS_S3_USE_INSTANCE_PROFILE = "aws.s3.use_instance_profile";

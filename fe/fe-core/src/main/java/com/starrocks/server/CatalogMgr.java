@@ -20,6 +20,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.authorization.HeimdallAccessController;
 import com.starrocks.authorization.NativeAccessController;
 import com.starrocks.authorization.ranger.hive.RangerHiveAccessController;
 import com.starrocks.authorization.ranger.starrocks.RangerStarRocksAccessController;
@@ -102,6 +103,17 @@ public class CatalogMgr {
         createCatalog(catalog.getType(), catalog.getName(), catalog.getComment(), catalog.getConfig());
     }
 
+    private boolean enableHeimdallAccessController(String name, String type, Map<String, String> properties) {
+        String dh = properties.getOrDefault("dataos.disable_heimdall", "false");
+        boolean r = "iceberg".equalsIgnoreCase(type) // Must be Iceberg
+                && Config.access_control.equals("heimdall")  // access_control = heimdall
+                && !"true".equalsIgnoreCase(dh); // Not explicitly disabled
+
+        LOG.info("{} {} on catalog: '{}'", HeimdallAccessController.class.getSimpleName(),
+                r ? "enabled" : "disabled", name);
+        return r;
+    }
+
     // please keep connector and catalog create together, they need keep in consistent asap.
     public void createCatalog(String type, String catalogName, String comment, Map<String, String> properties)
             throws DdlException {
@@ -122,7 +134,11 @@ public class CatalogMgr {
                     if (Config.access_control.equals("ranger")) {
                         Authorizer.getInstance().setAccessControl(catalogName, new RangerStarRocksAccessController());
                     } else {
-                        Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                        if (enableHeimdallAccessController(catalogName, type, properties)) {
+                            Authorizer.getInstance().setAccessControl(catalogName, new HeimdallAccessController());
+                        } else {
+                            Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                        }
                     }
                 } else {
                     Authorizer.getInstance().setAccessControl(catalogName, new RangerHiveAccessController(serviceName));
@@ -193,7 +209,12 @@ public class CatalogMgr {
                     if ("ranger".equals(Config.access_control)) {
                         Authorizer.getInstance().setAccessControl(catalogName, new RangerStarRocksAccessController());
                     } else {
-                        Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                        if (enableHeimdallAccessController(catalogName, type, newProperties)) {
+                            Authorizer.getInstance().setAccessControl(catalogName, new HeimdallAccessController());
+                        } else {
+                            Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                        }
+
                     }
                 } else {
                     Authorizer.getInstance().setAccessControl(catalogName, new RangerHiveAccessController(serviceName));
@@ -353,7 +374,12 @@ public class CatalogMgr {
                 if (Config.access_control.equals("ranger")) {
                     Authorizer.getInstance().setAccessControl(catalogName, new RangerStarRocksAccessController());
                 } else {
-                    Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                    if (enableHeimdallAccessController(catalogName, type, config)) {
+                        Authorizer.getInstance().setAccessControl(catalogName, new HeimdallAccessController());
+
+                    } else {
+                        Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
+                    }
                 }
             } else {
                 Authorizer.getInstance().setAccessControl(catalogName, new RangerHiveAccessController(serviceName));
@@ -579,4 +605,6 @@ public class CatalogMgr {
 
         loadResourceMappingCatalog();
     }
+
+
 }

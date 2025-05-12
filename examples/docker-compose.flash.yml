@@ -1,0 +1,67 @@
+version: "3"
+
+x-flash-environment: &flash-environment
+  GIN_MODE: debug
+  AWS_ACCESS_KEY_ID: admin
+  AWS_SECRET_ACCESS_KEY: password
+  AWS_REGION: us-east-1
+  SYS_LOG_TO_CONSOLE: 1
+
+networks:
+  flash:
+    driver: bridge
+
+services:
+  flash-fe:
+    image: rubiklabs/flash-fe:0.0.4
+    hostname: flash-fe
+    container_name: flash-fe
+    user: root
+    environment:
+      <<: *flash-environment
+    networks:
+      flash:
+    ports:
+      - "8030:8030"
+      - "9020:9020"
+      - "9030:9030"
+    command: >
+      bash -c "echo run_mode=shared_data >> /opt/starrocks/fe/conf/fe.conf &&      
+      echo access_control = heimdall >> /opt/starrocks/fe/conf/fe.conf &&
+      echo sys_log_level = INFO >> /opt/starrocks/fe/conf/fe.conf &&
+      echo sys_log_format = plaintext >> /opt/starrocks/fe/conf/fe.conf &&
+      bash /opt/starrocks/fe/bin/start_fe.sh"
+#    healthcheck:
+#      test: 'mysql -uroot -h127.0.0.1 -P 9030 -e "show frontends\G" |grep "Alive: true"'
+#      interval: 10s
+#      timeout: 5s
+#      retries: 3
+
+  flash-cn:
+    image: rubiklabs/flash-cn:0.0.3
+    hostname: flash-cn
+    container_name: flash-cn
+    user: root
+    environment:
+      <<: *flash-environment
+    depends_on:
+      - flash-fe
+    networks:
+      flash:
+    ports:
+      - "8040:8040"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        sleep 15s;
+        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn:9050\";"
+        echo enable_poco_client_for_aws_sdk = false >> /opt/starrocks/cn/conf/cn.conf
+        bash /opt/starrocks/cn/bin/start_cn.sh
+#    healthcheck:
+#      test: 'mysql -uroot -h10.5.0.2 -P 9030 -e "SHOW COMPUTE NODES\G" |grep "Alive: true"'
+#      interval: 10s
+#      timeout: 5s
+#      retries: 3
+
+

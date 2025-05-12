@@ -17,6 +17,8 @@ package com.starrocks.credential.gcp;
 import com.google.common.base.Preconditions;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Map;
 
@@ -27,9 +29,11 @@ import static com.starrocks.connector.share.credential.CloudConfigurationConstan
 import static com.starrocks.connector.share.credential.CloudConfigurationConstants.GCP_GCS_USE_COMPUTE_ENGINE_SERVICE_ACCOUNT;
 
 public class GCPCloudConfigurationProvoder implements CloudConfigurationProvider {
+    private static final Logger LOG = LogManager.getLogger(GCPCloudConfigurationProvoder.class);
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
+        LOG.info(" >> build >> {}", properties);
         Preconditions.checkNotNull(properties);
 
         GCPCloudCredential gcpCloudCredential = new GCPCloudCredential(

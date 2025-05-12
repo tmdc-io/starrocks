@@ -2626,6 +2626,9 @@ public class Config extends ConfigBase {
             "\"S3\", \"HDFS\", \"AZBLOB\", \"ADLS2\". case-insensitive")
     public static String cloud_native_storage_type = "S3";
 
+    @ConfField
+    public static String dataos_secret = "";
+
     // HDFS storage configuration
     /**
      * cloud native storage: hdfs storage url

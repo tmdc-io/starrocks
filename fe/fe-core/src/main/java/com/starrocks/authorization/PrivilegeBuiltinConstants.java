@@ -23,7 +23,7 @@ public class  PrivilegeBuiltinConstants {
     public static final String ROOT_ROLE_NAME = "root";
     public static final long ROOT_ROLE_ID = -1;
 
-    public static final String DB_ADMIN_ROLE_NAME = "db_admin";
+    public static final String DB_ADMIN_ROLE_NAME = "admin";
     public static final long DB_ADMIN_ROLE_ID = -2;
 
     public static final String CLUSTER_ADMIN_ROLE_NAME = "cluster_admin";
@@ -32,12 +32,12 @@ public class  PrivilegeBuiltinConstants {
     public static final String USER_ADMIN_ROLE_NAME = "user_admin";
     public static final long USER_ADMIN_ROLE_ID = -4;
 
-    public static final String PUBLIC_ROLE_NAME = "public";
+    public static final String PUBLIC_ROLE_NAME = "reader";
     public static final long PUBLIC_ROLE_ID = -5;
 
     public static final Set<String> BUILT_IN_ROLE_NAMES =
-            new HashSet<>(Arrays.asList(ROOT_ROLE_NAME, DB_ADMIN_ROLE_NAME, CLUSTER_ADMIN_ROLE_NAME,
-                    USER_ADMIN_ROLE_NAME, PUBLIC_ROLE_NAME));
+            new HashSet<>(Arrays.asList(ROOT_ROLE_NAME, DB_ADMIN_ROLE_NAME, /* CLUSTER_ADMIN_ROLE_NAME, */
+                    /* USER_ADMIN_ROLE_NAME, */ PUBLIC_ROLE_NAME));
 
     public static final Set<Long> IMMUTABLE_BUILT_IN_ROLE_IDS = new HashSet<>(Arrays.asList(
             ROOT_ROLE_ID, DB_ADMIN_ROLE_ID, CLUSTER_ADMIN_ROLE_ID, USER_ADMIN_ROLE_ID));

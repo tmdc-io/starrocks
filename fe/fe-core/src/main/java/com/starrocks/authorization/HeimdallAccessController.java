@@ -19,85 +19,52 @@ import com.starrocks.analysis.TableName;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.qe.ConnectContext;
+
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserIdentity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public class HeimdallAccessController extends NativeAccessController {
     private static final Logger LOG = LogManager.getLogger(HeimdallAccessController.class);
 
     @Override
-    public void checkUserAction(UserIdentity currentUser, Set<Long> roleIds, UserIdentity impersonateUser,
-            PrivilegeType privilegeType) throws AccessDeniedException {
-        super.checkUserAction(currentUser, roleIds, impersonateUser, privilegeType);
-    }
-
-    @Override
-    public void checkCatalogAction(UserIdentity currentUser, Set<Long> roleIds, String catalogName, PrivilegeType privilegeType)
-            throws AccessDeniedException {
-        super.checkCatalogAction(currentUser, roleIds, catalogName, privilegeType);
-    }
-
-    @Override
-    public void checkAnyActionOnCatalog(UserIdentity currentUser, Set<Long> roleIds, String catalogName)
-            throws AccessDeniedException {
-        super.checkAnyActionOnCatalog(currentUser, roleIds, catalogName);
-    }
-
-    @Override
-    public void checkActionInDb(UserIdentity currentUser, Set<Long> roleIds, String db, PrivilegeType privilegeType)
-            throws AccessDeniedException {
-        super.checkActionInDb(currentUser, roleIds, db, privilegeType);
-    }
-
-    @Override
-    public void checkAnyActionOnDb(UserIdentity currentUser, Set<Long> roleIds, String catalogName, String db)
-            throws AccessDeniedException {
-        super.checkAnyActionOnDb(currentUser, roleIds, catalogName, db);
-    }
-
-    @Override
     public void checkTableAction(UserIdentity currentUser, Set<Long> roleIds, TableName tableName, PrivilegeType privilegeType)
             throws AccessDeniedException {
         String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        LOG.info(">> Table ({}) user: {}, catalog: {}, table: {}",
-                privilegeType, currentUser, catalog, tableName);
+        LOG.info(" >> checkTableAction >> user: {}, table: {}, type: {}", currentUser, tableName, privilegeType);
 
         super.checkTableAction(currentUser, roleIds, tableName, privilegeType);
-    }
 
-    @Override
-    public void checkAnyActionOnTable(UserIdentity currentUser, Set<Long> roleIds, TableName tableName)
-            throws AccessDeniedException {
-        super.checkAnyActionOnTable(currentUser, roleIds, tableName);
-    }
-
-    @Override
-    public void checkAnyActionOnAnyTable(UserIdentity currentUser, Set<Long> roleIds, String catalog, String db)
-            throws AccessDeniedException {
-        super.checkAnyActionOnAnyTable(currentUser, roleIds, catalog, db);
+        // Note - This method should never be called unless the catalog of Iceberg type, and
+        // this controller is explicitly enabled. But, no harm in double-checking
+        if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            GlobalStateMgr.getCurrentState().getDataOSClient().checkTableAction(currentUser, tableName, privilegeType);
+        }
     }
 
     @Override
     public Map<String, Expr> getColumnMaskingPolicy(ConnectContext context, TableName tableName, List<Column> columns) {
         String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        UserIdentity userIdentity = context.getCurrentUserIdentity();
-        LOG.info(">> Mask? user: {}, catalog: {}, table: {}, columns: {}",
-                userIdentity, catalog, tableName, columns);
-
+        LOG.info(" >> getColumnMaskingPolicy >> user: {}, table: {}", context.getCurrentUserIdentity(), tableName);
+        if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            return GlobalStateMgr.getCurrentState().getDataOSClient().getColumnMaskExprs(context, tableName, columns);
+        }
         return null;
     }
 
     @Override
     public Expr getRowAccessPolicy(ConnectContext context, TableName tableName) {
         String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        UserIdentity userIdentity = context.getCurrentUserIdentity();
-        LOG.info(">> Filter? user: {}, catalog: {}, table: {}",
-                userIdentity, catalog, tableName);
+        LOG.info(" >> getRowAccessPolicy >> user: {}, table: {}", context.getCurrentUserIdentity(), tableName);
+        if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            return GlobalStateMgr.getCurrentState().getDataOSClient().getRowFilterExpr(context, tableName);
+        }
         return null;
     }
 

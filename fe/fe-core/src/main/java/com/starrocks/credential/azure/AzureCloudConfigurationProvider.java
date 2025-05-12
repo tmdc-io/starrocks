@@ -18,6 +18,8 @@ import com.google.common.base.Preconditions;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
 import com.starrocks.credential.CredentialUtil;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Map;
 
@@ -41,12 +43,14 @@ import static com.starrocks.connector.share.credential.CloudConfigurationConstan
 import static com.starrocks.connector.share.credential.CloudConfigurationConstants.AZURE_BLOB_STORAGE_ACCOUNT;
 
 public class AzureCloudConfigurationProvider implements CloudConfigurationProvider {
+    private static final Logger LOG = LogManager.getLogger(AzureCloudConfigurationProvider.class);
 
     // Used to retrieve azure load path from configuration map
     public static final String AZURE_PATH_KEY = "azure_path_key";
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
+        LOG.info(" >> build >> {}", properties);
         Preconditions.checkNotNull(properties);
 
         AzureStoragePath azureStoragePath = tryGetAzureStoragePath(properties);

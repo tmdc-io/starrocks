@@ -49,7 +49,7 @@ public class HeimdallAuthenticationProvider
             clearPassword = Arrays.copyOf(remotePassword, remotePassword.length - 1);
         }
         String apikey = new String(clearPassword, StandardCharsets.UTF_8);
-        GlobalStateMgr.getCurrentState().getHeimdall().authorize(user, host, apikey);
+        GlobalStateMgr.getCurrentState().getDataOSClient().authorize(user, host, apikey);
     }
 
 }

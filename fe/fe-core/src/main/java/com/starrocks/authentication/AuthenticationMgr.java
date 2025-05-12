@@ -37,6 +37,8 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.CreateUserStmt;
 import com.starrocks.sql.ast.DropUserStmt;
+import com.starrocks.sql.ast.GrantRoleStmt;
+import com.starrocks.sql.ast.RevokeRoleStmt;
 import com.starrocks.sql.ast.UserAuthOption;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.sql.parser.NodePosition;
@@ -285,14 +287,31 @@ public class AuthenticationMgr {
                         AuthenticationProviderFactory.create(matchedUserIdentity.getValue().getAuthPlugin());
                 provider.authenticate(remoteUser, remoteHost, remotePasswd, randomString,
                         matchedUserIdentity.getValue());
-                return matchedUserIdentity.getKey();
-            } catch (AuthenticationException e) {
+                return getOrUpdateUserIdentity(matchedUserIdentity);
+            } catch (AuthenticationException | PrivilegeException e) {
                 LOG.debug("failed to authenticate for native, user: {}@{}, error: {}",
                         remoteUser, remoteHost, e.getMessage());
             }
         }
 
         return null;
+    }
+
+    private UserIdentity getOrUpdateUserIdentity(Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity)
+            throws PrivilegeException, AuthenticationException {
+        UserIdentity user = matchedUserIdentity.getKey();
+        AuthorizationMgr manager = GlobalStateMgr.getCurrentState().getAuthorizationMgr();
+        try {
+            if (GlobalStateMgr.getCurrentState().getDataOSClient().isAdmin(user.getUser(), user.getHost())) {
+                manager.grantRole(new GrantRoleStmt(List.of(PrivilegeBuiltinConstants.DB_ADMIN_ROLE_NAME), user));
+            } else {
+                manager.revokeRole(new RevokeRoleStmt(List.of(PrivilegeBuiltinConstants.DB_ADMIN_ROLE_NAME), user));
+            }
+        } catch (DdlException e) {
+            throw new RuntimeException(e);
+        }
+
+        return user;
     }
 
     public UserIdentity checkPassword(String remoteUser, String remoteHost, byte[] remotePasswd, byte[] randomString) {

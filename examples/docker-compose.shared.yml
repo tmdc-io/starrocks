@@ -1,46 +1,85 @@
 version: "3"
 services:
   minio:
-    container_name: starrocks-minio
-    image: minio/minio:latest
+    container_name: minio
+    image: minio/minio
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: minio
     ports:
       - "9001:9001"
       - "9000:9000"
-    entrypoint: sh
-    command: '-c ''mkdir -p /minio_data/starrocks && minio server /minio_data --console-address ":9001"'''
+    command: ["server", "/data", "--console-address", ":9001"]
     networks:
       flash:
+        aliases:
+          - warehouse.minio
+
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc
+    container_name: mc
+    networks:
+      flash:
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc rm -r --force minio/warehouse;
+      /usr/bin/mc mb minio/warehouse;
+      /usr/bin/mc policy set public minio/warehouse;
+      tail -f /dev/null
+      "
+
+
+  rest:
+    image: tabulario/iceberg-rest
+    container_name: iceberg-rest
+    networks:
+      flash:
+        aliases:
+          - iceberg-rest.minio
+    ports:
+      - 8181:8181
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
 
   flash-fe:
     image: rubiklabs/flash-fe:0.0.1
+#    image: starrocks/fe-ubuntu:3.4-latest
     hostname: flash-fe
     container_name: flash-fe
     user: root
     environment:
-      SYS_LOG_TO_CONSOLE: "1"
+      - SYS_LOG_TO_CONSOLE=1
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
     command: >
       bash -c "echo run_mode=shared_data >> /opt/starrocks/fe/conf/fe.conf &&      
       echo access_control = heimdall >> /opt/starrocks/fe/conf/fe.conf &&
       echo sys_log_level = INFO >> /opt/starrocks/fe/conf/fe.conf &&
       echo sys_log_format = plaintext >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_path=starrocks >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_endpoint=minio:9000 >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_use_instance_profile=false >> /opt/starrocks/fe/conf/fe.conf &&
-      echo cloud_native_storage_type=S3 >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_use_aws_sdk_default_behavior=true >> /opt/starrocks/fe/conf/fe.conf &&
       bash /opt/starrocks/fe/bin/start_fe.sh"
     ports:
       - 8030:8030
       - 9020:9020
       - 9030:9030
-    healthcheck:
-      test: 'mysql -uroot -h10.5.0.2 -P 9030 -e "show frontends\G" |grep "Alive: true"'
-      interval: 10s
-      timeout: 5s
-      retries: 3
+#    healthcheck:
+#      test: 'mysql -uroot -h127.0.0.1 -P 9030 -e "show frontends\G" |grep "Alive: true"'
+#      interval: 10s
+#      timeout: 5s
+#      retries: 3
     depends_on:
       - minio
     networks:
@@ -48,31 +87,53 @@ services:
     volumes:
       - ../sample/:/sample/
 
-
   flash-cn:
     image: rubiklabs/flash-cn:0.0.1
+#    image: starrocks/cn-ubuntu:3.4-latest
     command:
       - /bin/bash
       - -c
       - |
         sleep 15s;
-        mysql --connect-timeout 2 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn:9050\";"
-        /opt/starrocks/cn/bin/start_cn.sh
+        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn:9050\";"
+        echo enable_poco_client_for_aws_sdk = false >> /opt/starrocks/cn/conf/cn.conf
+        bash /opt/starrocks/cn/bin/start_cn.sh
     ports:
       - 8040:8040
     hostname: flash-cn
     container_name: flash-cn
     user: root
+    environment:
+      - SYS_LOG_TO_CONSOLE=1
     depends_on:
       - flash-fe
       - minio
-    healthcheck:
-      test: 'mysql -uroot -h10.5.0.2 -P 9030 -e "SHOW COMPUTE NODES\G" |grep "Alive: true"'
-      interval: 10s
-      timeout: 5s
-      retries: 3
+#    healthcheck:
+#      test: 'mysql -uroot -h10.5.0.2 -P 9030 -e "SHOW COMPUTE NODES\G" |grep "Alive: true"'
+#      interval: 10s
+#      timeout: 5s
+#      retries: 3
     networks:
       flash:
+
+#  spark-iceberg:
+#    image: tabulario/spark-iceberg
+#    container_name: spark-iceberg
+#    build: spark/
+#    networks:
+#      flash:
+#    depends_on:
+#      - rest
+#      - minio
+#    environment:
+#      - AWS_ACCESS_KEY_ID=minioadmin
+#      - AWS_SECRET_ACCESS_KEY=minioadmin
+#      - AWS_REGION=us-east-1
+#    ports:
+#      - 8888:8888
+#      - 8080:8080
+#      - 10000:10000
+#      - 10001:10001
 networks:
   flash:
     driver: bridge
