@@ -15,6 +15,7 @@
 package com.starrocks.dataos;
 
 public class Constants {
-    public static final String DATAOS_DEPOT = "dataos.depot";
+    public static final String DATAOS_DEPOT_ADDRESS = "dataos.depot.address";
+    public static final String DATAOS_DEPOT_NAME = "dataos.depot.name";
     public static final String DATAOS_SECRET = "dataos.secret";
 }

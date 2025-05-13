@@ -13,7 +13,7 @@ networks:
 
 services:
   flash-fe:
-    image: rubiklabs/flash-fe:0.0.4
+    image: rubiklabs/flash-fe:0.0.5
     hostname: flash-fe
     container_name: flash-fe
     user: root

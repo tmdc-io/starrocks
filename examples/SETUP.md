@@ -53,6 +53,7 @@ PROPERTIES (
   "aws.s3.region" = "us-east-1",
   "aws.s3.enable_path_style_access" = "false",
   "client.factory" = "com.starrocks.connector.share.iceberg.IcebergAwsClientFactory",
+  "dataos.depot.address" = "dataos://depot?purpose=read",
   "dataos.disable_heimdall" = "false"
 );
 SHOW CATALOGS;    

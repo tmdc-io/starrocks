@@ -66,7 +66,7 @@ public abstract class StorageVolumeMgr implements Writable, GsonPostProcessable 
 
     public static final String LOCAL = "local";
 
-    public static final String BUILTIN_STORAGE_VOLUME = "builtin_storage_volume";
+    public static final String BUILTIN_STORAGE_VOLUME = "def_volume";
 
     private static final String S3 = "s3";
 

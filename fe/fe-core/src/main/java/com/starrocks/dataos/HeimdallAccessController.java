@@ -36,24 +36,44 @@ public class HeimdallAccessController extends NativeAccessController {
     private static final Logger LOG = LogManager.getLogger(HeimdallAccessController.class);
 
     @Override
-    public void checkTableAction(UserIdentity currentUser, Set<Long> roleIds, TableName tableName, PrivilegeType privilegeType)
+    public void checkCatalogAction(UserIdentity currentUser, Set<Long> roleIds, String catalogName, PrivilegeType privilegeType)
             throws AccessDeniedException {
-        String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        LOG.info(" >> checkTableAction >> user: {}, table: {}, type: {}", currentUser, tableName, privilegeType);
+        super.checkCatalogAction(currentUser, roleIds, catalogName, privilegeType);
 
-        super.checkTableAction(currentUser, roleIds, tableName, privilegeType);
+        // Not an internal catalog? Check with Heimdall
+        if (!Objects.equals(catalogName, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            GlobalStateMgr.getCurrentState().getDataOSClient().checkCatalogAction(currentUser, catalogName, privilegeType);
+        }
+    }
 
-        // Note - This method should never be called unless the catalog of Iceberg type, and
-        // this controller is explicitly enabled. But, no harm in double-checking
+    @Override
+    public void checkDbAction(UserIdentity currentUser, Set<Long> roleIds, String catalogName, String db,
+            PrivilegeType type) throws AccessDeniedException {
+        super.checkDbAction(currentUser, roleIds, catalogName, db, type);
+
+        // Not an internal catalog? Check with Heimdall
+        if (!Objects.equals(catalogName, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
+            GlobalStateMgr.getCurrentState().getDataOSClient().checkDbAction(currentUser, catalogName, db, type);
+        }
+    }
+
+    @Override
+    public void checkTableAction(UserIdentity currentUser, Set<Long> roleIds, TableName table, PrivilegeType privilegeType)
+            throws AccessDeniedException {
+        super.checkTableAction(currentUser, roleIds, table, privilegeType);
+
+        String catalog = table.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : table.getCatalog();
+        // Not an internal catalog? Check with Heimdall
         if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
-            GlobalStateMgr.getCurrentState().getDataOSClient().checkTableAction(currentUser, tableName, privilegeType);
+            GlobalStateMgr.getCurrentState().getDataOSClient().checkTableAction(currentUser, table, privilegeType);
         }
     }
 
     @Override
     public Map<String, Expr> getColumnMaskingPolicy(ConnectContext context, TableName tableName, List<Column> columns) {
         String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        LOG.info(" >> getColumnMaskingPolicy >> user: {}, table: {}", context.getCurrentUserIdentity(), tableName);
+
+        // Not an internal catalog? Check with Heimdall
         if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
             return GlobalStateMgr.getCurrentState().getDataOSClient().getColumnMaskExprs(context, tableName, columns);
         }
@@ -63,7 +83,8 @@ public class HeimdallAccessController extends NativeAccessController {
     @Override
     public Expr getRowAccessPolicy(ConnectContext context, TableName tableName) {
         String catalog = tableName.getCatalog() == null ? InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME : tableName.getCatalog();
-        LOG.info(" >> getRowAccessPolicy >> user: {}, table: {}", context.getCurrentUserIdentity(), tableName);
+
+        // Not an internal catalog? Check with Heimdall
         if (!Objects.equals(catalog, InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME)) {
             return GlobalStateMgr.getCurrentState().getDataOSClient().getRowFilterExpr(context, tableName);
         }

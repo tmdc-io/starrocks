@@ -320,7 +320,7 @@ public class AuthenticationMgr {
         // 2/ User's authPlugin is NOT Heimdall
         if (ROOT_USER.equalsIgnoreCase(user.getUser())
                 || !authInfo.getAuthPlugin().equalsIgnoreCase(AuthPlugin.HEIMDALL.name())) {
-            LOG.info("Skip DataOS isAdmin check for user: '{}'", user);
+            LOG.info("Skipping DataOS isAdmin check for user: {}", user);
             return user;
         }
 

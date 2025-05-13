@@ -132,11 +132,17 @@ public class CatalogMgr {
             try {
                 // DataOS Heimdall
                 // resolve dataos.depot, if supplied
-                String depot = properties.get(Constants.DATAOS_DEPOT);
+                String depot = properties.get(Constants.DATAOS_DEPOT_ADDRESS);
                 if (!Strings.isNullOrEmpty(depot)) {
                     Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient().resolveIcebergDepot(depot);
                     if (m != null && !m.isEmpty()) {
                         properties.putAll(m); // Copy all the keys
+
+                        // catalogName must match depotName
+                        String depotName = properties.get(Constants.DATAOS_DEPOT_NAME);
+                        Preconditions.checkState(
+                                !catalogName.equalsIgnoreCase(depotName),
+                                "Catalog '%s' must be named as '%s'", catalogName, depotName);
                     }
                 }
 

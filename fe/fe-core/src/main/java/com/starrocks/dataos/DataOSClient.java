@@ -26,6 +26,7 @@ import com.starrocks.sql.ast.UserIdentity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -64,10 +65,14 @@ public class DataOSClient {
     // "iceberg.catalog.type" = "rest",
     // "iceberg.catalog.uri" = "http://iceberg-rest:8181/",
     // "iceberg.catalog.warehouse" = "warehouse",
-    // "dataos.secret" =
-    public Map<String, String> resolveIcebergDepot(String depot) throws DdlException {
-        LOG.info(" >> resolveIcebergDepot >> depot: {}", depot);
-        return null;
+    // DATAOS_SECRET =
+    // DATAOS_DEPOT_NAME
+    public Map<String, String> resolveIcebergDepot(String depotAddress) throws DdlException {
+        LOG.info(" >> resolveIcebergDepot >> depot: {}", depotAddress); // dataos://depot-name?purpose=hello
+
+        Map<String, String> map = new HashMap<String, String>();
+        map.put(Constants.DATAOS_DEPOT_NAME, depotAddress); // Should be depot-name, depot-resolver API returns it
+        return map;
     }
 
     // Expects these keys in the map that is returned
@@ -103,6 +108,18 @@ public class DataOSClient {
      * Data & Object Policy related methods
      * ====================================
      */
+
+    public void checkCatalogAction(UserIdentity user, String catalog, PrivilegeType type)
+            throws AccessDeniedException {
+        LOG.info(" >> checkCatalogAction >> user: {}, catalog: {}, type: {}",
+                user, catalog, type);
+    }
+
+    public void checkDbAction(UserIdentity user, String catalog, String db, PrivilegeType type)
+            throws AccessDeniedException {
+        LOG.info(" >> checkDbAction >> user: {}, catalog: {}, db: {}, type: {}",
+                user, catalog, db, type);
+    }
 
     public void checkTableAction(UserIdentity user, TableName table, PrivilegeType type)
             throws AccessDeniedException {
