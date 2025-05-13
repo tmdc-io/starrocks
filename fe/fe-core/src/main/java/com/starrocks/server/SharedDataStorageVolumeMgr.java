@@ -31,6 +31,7 @@ import com.starrocks.common.InvalidConfException;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
 import com.starrocks.connector.share.credential.CloudConfigurationConstants;
+import com.starrocks.dataos.Constants;
 import com.starrocks.lake.StorageInfo;
 import com.starrocks.persist.TableStorageInfo;
 import com.starrocks.persist.TableStorageInfos;
@@ -539,7 +540,8 @@ public class SharedDataStorageVolumeMgr extends StorageVolumeMgr {
 
     private Map<String, String> parseParamsFromConfig() {
         Map<String, String> params = new HashMap<>();
-        params.put(CloudConfigurationConstants.DATAOS_SECRET, Config.dataos_secret);
+        // DataOS secret
+        params.put(Constants.DATAOS_SECRET, Config.dataos_secret);
         switch (Config.cloud_native_storage_type.toLowerCase()) {
             case "s3":
                 params.put(CloudConfigurationConstants.AWS_S3_ACCESS_KEY, Config.aws_s3_access_key);

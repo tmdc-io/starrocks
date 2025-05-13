@@ -15,8 +15,12 @@
 package com.starrocks.credential.aws;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.starrocks.common.DdlException;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
+import com.starrocks.dataos.Constants;
+import com.starrocks.server.GlobalStateMgr;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,8 +57,24 @@ public class AwsCloudConfigurationProvider implements CloudConfigurationProvider
     private static final Logger LOG = LogManager.getLogger(AwsCloudConfigurationProvider.class);
 
     public AwsCloudCredential buildGlueCloudCredential(HiveConf hiveConf) {
-        LOG.info(">> build >>> Glue >> {}", hiveConf.getAllProperties());
         Preconditions.checkNotNull(hiveConf);
+        // DataOS Heimdall
+        // resolve dataos.secret, if supplied
+        String secret = hiveConf.get(Constants.DATAOS_SECRET);
+        if (!Strings.isNullOrEmpty(secret)) {
+            try {
+                Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient()
+                        .resolveSecretForGlue(secret);
+                if (m != null && !m.isEmpty()) {
+                    for (Map.Entry<String, String> e : m.entrySet()) {
+                        hiveConf.set(e.getKey(), e.getValue());
+                    }
+                }
+            } catch (DdlException de) {
+                LOG.error("Error in resolving DataOS secret: " + secret, de);
+            }
+        }
+
         AwsCloudCredential awsCloudCredential = new AwsCloudCredential(
                 hiveConf.getBoolean(AWS_GLUE_USE_AWS_SDK_DEFAULT_BEHAVIOR, false),
                 hiveConf.getBoolean(AWS_GLUE_USE_INSTANCE_PROFILE, false),
@@ -76,8 +96,23 @@ public class AwsCloudConfigurationProvider implements CloudConfigurationProvider
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
-        LOG.info(">> build >>> S3 >> {}", properties);
         Preconditions.checkNotNull(properties);
+
+        // DataOS Heimdall
+        // resolve dataos.secret, if supplied
+        String secret = properties.get(Constants.DATAOS_SECRET);
+        if (!Strings.isNullOrEmpty(secret)) {
+            try {
+                Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient()
+                        .resolveSecretForS3(secret);
+                if (m != null && !m.isEmpty()) {
+                    properties.putAll(m); // Copy all the keys
+                }
+            } catch (DdlException de) {
+                LOG.error("Error in resolving DataOS secret: " + secret, de);
+            }
+        }
+
         AwsCloudCredential awsCloudCredential = new AwsCloudCredential(
                 Boolean.parseBoolean(properties.getOrDefault(AWS_S3_USE_AWS_SDK_DEFAULT_BEHAVIOR, "false")),
                 Boolean.parseBoolean(properties.getOrDefault(AWS_S3_USE_INSTANCE_PROFILE, "false")),

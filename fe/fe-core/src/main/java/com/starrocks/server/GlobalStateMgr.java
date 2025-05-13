@@ -49,7 +49,6 @@ import com.starrocks.analysis.TableName;
 import com.starrocks.authentication.AuthenticationMgr;
 import com.starrocks.authorization.AccessControlProvider;
 import com.starrocks.authorization.AuthorizationMgr;
-import com.starrocks.authorization.DataOSClient;
 import com.starrocks.authorization.DefaultAuthorizationProvider;
 import com.starrocks.authorization.NativeAccessController;
 import com.starrocks.authorization.PrivilegeException;
@@ -118,6 +117,7 @@ import com.starrocks.connector.statistics.ConnectorTableTriggerAnalyzeMgr;
 import com.starrocks.consistency.ConsistencyChecker;
 import com.starrocks.consistency.LockChecker;
 import com.starrocks.consistency.MetaRecoveryDaemon;
+import com.starrocks.dataos.DataOSClient;
 import com.starrocks.encryption.KeyMgr;
 import com.starrocks.encryption.KeyRotationDaemon;
 import com.starrocks.ha.FrontendNodeType;
@@ -812,11 +812,6 @@ public class GlobalStateMgr {
         AccessControlProvider accessControlProvider;
         if (Config.access_control.equals("ranger")) {
             accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(), new RangerStarRocksAccessController());
-        //}
-        // else if (Config.access_control.equals("heimdall")) {
-        //    LOG.info(" *** setting up Heimdall access controller *** ");
-        //    accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(),
-        //            new HeimdallAccessController());
         } else {
             accessControlProvider = new AccessControlProvider(new AuthorizerStmtVisitor(), new NativeAccessController());
         }

@@ -15,9 +15,13 @@
 package com.starrocks.credential.azure;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.starrocks.common.DdlException;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
 import com.starrocks.credential.CredentialUtil;
+import com.starrocks.dataos.Constants;
+import com.starrocks.server.GlobalStateMgr;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,8 +54,22 @@ public class AzureCloudConfigurationProvider implements CloudConfigurationProvid
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
-        LOG.info(" >> build >> {}", properties);
         Preconditions.checkNotNull(properties);
+
+        // DataOS Heimdall
+        // resolve dataos.secret, if supplied
+        String secret = properties.get(Constants.DATAOS_SECRET);
+        if (!Strings.isNullOrEmpty(secret)) {
+            try {
+                Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient()
+                        .resolveSecretForAzure(secret);
+                if (m != null && !m.isEmpty()) {
+                    properties.putAll(m); // Copy all the keys
+                }
+            } catch (DdlException de) {
+                LOG.error("Error in resolving DataOS secret: " + secret, de);
+            }
+        }
 
         AzureStoragePath azureStoragePath = tryGetAzureStoragePath(properties);
         String storageAccount = azureStoragePath.getStorageAccount();

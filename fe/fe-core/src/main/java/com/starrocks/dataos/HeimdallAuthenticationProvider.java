@@ -11,8 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package com.starrocks.authentication;
+package com.starrocks.dataos;
 
+import com.starrocks.authentication.AuthenticationException;
+import com.starrocks.authentication.AuthenticationProvider;
+import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.server.GlobalStateMgr;
@@ -51,5 +54,4 @@ public class HeimdallAuthenticationProvider
         String apikey = new String(clearPassword, StandardCharsets.UTF_8);
         GlobalStateMgr.getCurrentState().getDataOSClient().authorize(user, host, apikey);
     }
-
 }

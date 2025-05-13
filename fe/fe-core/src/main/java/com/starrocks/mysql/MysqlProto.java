@@ -36,13 +36,13 @@ package com.starrocks.mysql;
 
 import com.google.common.base.Strings;
 import com.starrocks.authentication.AuthenticationMgr;
-import com.starrocks.authentication.HeimdallAuthenticationProvider;
 import com.starrocks.authentication.UserAuthenticationInfo;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
 import com.starrocks.common.Pair;
+import com.starrocks.dataos.HeimdallAuthenticationProvider;
 import com.starrocks.mysql.ssl.SSLContextLoader;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
@@ -243,14 +243,11 @@ public class MysqlProto {
             return Pair.create(false, null);
         }
 
-        // Heimdall
+        // DataOS Heimdall
         // mysql_clear_password cannot be specified in mariadb client, so if the user is a Heimdall user,
         // switch to mysql_clear_password plugin.
 
-        // $ mysql -P9030 -h127.0.0.1 -uUser
-        // --default-auth mysql_clear_password
-        // --enable-cleartext-plugin
-        // -pPassword
+        // $ mysql -P9030 -h127.0.0.1 -uUser --default-auth mysql_clear_password --enable-cleartext-plugin
         if (!authPluginName.equals(MysqlHandshakePacket.CLEAR_PASSWORD_PLUGIN_NAME)
                 && isHeimdallUser(authPacket.getUser(), context)) {
             LOG.info("switch-auth-plugin: {} => {}", authPluginName,
@@ -289,7 +286,7 @@ public class MysqlProto {
         return localUser == null && Config.authentication_chain.length > 1;
     }
 
-    //
+    // checks whether a User is a Heimdall user
     private static boolean isHeimdallUser(String user, ConnectContext context) {
         Map.Entry<UserIdentity, UserAuthenticationInfo> localUser = context.getGlobalStateMgr().getAuthenticationMgr()
                 .getBestMatchedUserIdentity(user, context.getMysqlChannel().getRemoteIp());

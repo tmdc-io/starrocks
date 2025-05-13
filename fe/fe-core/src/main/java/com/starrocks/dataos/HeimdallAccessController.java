@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.authorization;
+package com.starrocks.dataos;
 
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.TableName;
+import com.starrocks.authorization.AccessDeniedException;
+import com.starrocks.authorization.NativeAccessController;
+import com.starrocks.authorization.PrivilegeType;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.InternalCatalog;
 import com.starrocks.qe.ConnectContext;
-
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.UserIdentity;
 import org.apache.logging.log4j.LogManager;

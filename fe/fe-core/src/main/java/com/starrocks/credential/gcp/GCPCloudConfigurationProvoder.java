@@ -15,8 +15,12 @@
 package com.starrocks.credential.gcp;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.starrocks.common.DdlException;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationProvider;
+import com.starrocks.dataos.Constants;
+import com.starrocks.server.GlobalStateMgr;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,8 +37,22 @@ public class GCPCloudConfigurationProvoder implements CloudConfigurationProvider
 
     @Override
     public CloudConfiguration build(Map<String, String> properties) {
-        LOG.info(" >> build >> {}", properties);
         Preconditions.checkNotNull(properties);
+
+        // DataOS Heimdall
+        // resolve dataos.secret, if supplied
+        String secret = properties.get(Constants.DATAOS_SECRET);
+        if (!Strings.isNullOrEmpty(secret)) {
+            try {
+                Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient()
+                        .resolveSecretForGcp(secret);
+                if (m != null && !m.isEmpty()) {
+                    properties.putAll(m); // Copy all the keys
+                }
+            } catch (DdlException de) {
+                LOG.error("Error in resolving DataOS secret: " + secret, de);
+            }
+        }
 
         GCPCloudCredential gcpCloudCredential = new GCPCloudCredential(
                 Boolean.parseBoolean(properties.getOrDefault(GCP_GCS_USE_COMPUTE_ENGINE_SERVICE_ACCOUNT, "false")),

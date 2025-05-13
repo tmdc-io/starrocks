@@ -25,7 +25,9 @@ import com.starrocks.authorization.UserPrivilegeCollectionV2;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.Pair;
+import com.starrocks.dataos.HeimdallAuthenticationProvider;
 import com.starrocks.mysql.MysqlPassword;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.persist.ImageWriter;
 import com.starrocks.persist.metablock.MapEntryConsumer;
 import com.starrocks.persist.metablock.SRMetaBlockEOFException;
@@ -128,8 +130,10 @@ public class AuthenticationMgr {
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
         // DataOS Heimdall
-        AuthenticationProviderFactory.installPlugin(
-                HeimdallAuthenticationProvider.PLUGIN_NAME, new HeimdallAuthenticationProvider());
+        if (Config.access_control.equalsIgnoreCase(AuthPlugin.HEIMDALL.name())) {
+            AuthenticationProviderFactory.installPlugin(
+                    HeimdallAuthenticationProvider.PLUGIN_NAME, new HeimdallAuthenticationProvider());
+        }
 
         // default user
         userToAuthenticationInfo = new UserAuthInfoTreeMap();
@@ -243,33 +247,41 @@ public class AuthenticationMgr {
             String remoteUser, String remoteHost) {
         Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity =
                 getBestMatchedUserIdentityInternal(remoteUser, remoteHost);
+        // user found? return
+        if (matchedUserIdentity != null) {
+            return matchedUserIdentity;
+        }
 
-        if (matchedUserIdentity == null) {
-            try {
-                String authPluginName = HeimdallAuthenticationProvider.PLUGIN_NAME.toUpperCase();
-                AuthenticationProvider provider = AuthenticationProviderFactory.create(authPluginName);
-                if (provider != null) {
-                    // TODO: Check with Heimdall here?
-                    UserIdentity userIdentity = new UserIdentity(remoteUser, UserAuthenticationInfo.ANY_HOST);
-                    UserAuthOption userAuthOption = new UserAuthOption(new String(MysqlPassword.EMPTY_PASSWORD),
-                            authPluginName, null, true, NodePosition.ZERO);
-
-                    List<String> defRoles = Lists.newArrayList();
-                    defRoles.add(PrivilegeBuiltinConstants.PUBLIC_ROLE_NAME);
-
-                    CreateUserStmt stmt = new CreateUserStmt(userIdentity, true, userAuthOption,
-                            defRoles, null, NodePosition.ZERO);
-                    stmt.setAuthenticationInfo(provider.analyzeAuthOption(userIdentity, userAuthOption));
-
-                    createUser(stmt);
-                    LOG.info("user '{}' is created", userIdentity);
-
-                    // Return this newly created user
-                    matchedUserIdentity = getBestMatchedUserIdentityInternal(remoteUser, remoteHost);
-                }
-            } catch (DdlException | AuthenticationException e) {
-                throw new RuntimeException(e);
+        // Heimdall plugin is enabled? create the user
+        try {
+            String authPluginName = HeimdallAuthenticationProvider.PLUGIN_NAME.toUpperCase();
+            AuthenticationProvider provider = AuthenticationProviderFactory.create(authPluginName);
+            if (provider == null) {
+                return null;
             }
+            boolean userExists = GlobalStateMgr.getCurrentState().getDataOSClient().userExists(remoteUser);
+            if (!userExists) {
+                return null;
+            }
+
+            UserIdentity userIdentity = new UserIdentity(remoteUser, UserAuthenticationInfo.ANY_HOST);
+            UserAuthOption userAuthOption = new UserAuthOption(new String(MysqlPassword.EMPTY_PASSWORD),
+                    authPluginName, null, true, NodePosition.ZERO);
+
+            List<String> defRoles = Lists.newArrayList();
+            defRoles.add(PrivilegeBuiltinConstants.PUBLIC_ROLE_NAME);
+
+            CreateUserStmt stmt = new CreateUserStmt(userIdentity, true, userAuthOption,
+                    defRoles, null, NodePosition.ZERO);
+            stmt.setAuthenticationInfo(provider.analyzeAuthOption(userIdentity, userAuthOption));
+
+            createUser(stmt);
+            LOG.info("user '{}' is created", userIdentity);
+
+            // Populate matchedUserIdentity back from Internal DB
+            matchedUserIdentity = getBestMatchedUserIdentityInternal(remoteUser, remoteHost);
+        } catch (DdlException | AuthenticationException e) {
+            throw new RuntimeException(e);
         }
 
         return matchedUserIdentity;
@@ -297,9 +309,21 @@ public class AuthenticationMgr {
         return null;
     }
 
+    // Checks if User should be assigned an Admin role
     private UserIdentity getOrUpdateUserIdentity(Map.Entry<UserIdentity, UserAuthenticationInfo> matchedUserIdentity)
             throws PrivilegeException, AuthenticationException {
         UserIdentity user = matchedUserIdentity.getKey();
+        UserAuthenticationInfo authInfo = matchedUserIdentity.getValue();
+
+        // skip isAdmin check, if
+        // 1/ User is ROOT, or
+        // 2/ User's authPlugin is NOT Heimdall
+        if (ROOT_USER.equalsIgnoreCase(user.getUser())
+                || !authInfo.getAuthPlugin().equalsIgnoreCase(AuthPlugin.HEIMDALL.name())) {
+            LOG.info("Skip DataOS isAdmin check for user: '{}'", user);
+            return user;
+        }
+
         AuthorizationMgr manager = GlobalStateMgr.getCurrentState().getAuthorizationMgr();
         try {
             if (GlobalStateMgr.getCurrentState().getDataOSClient().isAdmin(user.getUser(), user.getHost())) {

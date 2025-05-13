@@ -20,7 +20,6 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.starrocks.authorization.HeimdallAccessController;
 import com.starrocks.authorization.NativeAccessController;
 import com.starrocks.authorization.ranger.hive.RangerHiveAccessController;
 import com.starrocks.authorization.ranger.starrocks.RangerStarRocksAccessController;
@@ -44,6 +43,9 @@ import com.starrocks.connector.ConnectorMgr;
 import com.starrocks.connector.ConnectorTableId;
 import com.starrocks.connector.ConnectorType;
 import com.starrocks.connector.exception.StarRocksConnectorException;
+import com.starrocks.dataos.Constants;
+import com.starrocks.dataos.HeimdallAccessController;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.persist.AlterCatalogLog;
 import com.starrocks.persist.DropCatalogLog;
 import com.starrocks.persist.ImageWriter;
@@ -105,8 +107,8 @@ public class CatalogMgr {
 
     private boolean enableHeimdallAccessController(String name, String type, Map<String, String> properties) {
         String dh = properties.getOrDefault("dataos.disable_heimdall", "false");
-        boolean r = "iceberg".equalsIgnoreCase(type) // Must be Iceberg
-                && Config.access_control.equals("heimdall")  // access_control = heimdall
+        boolean r = ConnectorType.ICEBERG.getName().equalsIgnoreCase(type) // Must be Iceberg
+                && Config.access_control.equalsIgnoreCase(AuthPlugin.HEIMDALL.name())  // access_control = heimdall
                 && !"true".equalsIgnoreCase(dh); // Not explicitly disabled
 
         LOG.info("{} {} on catalog: '{}'", HeimdallAccessController.class.getSimpleName(),
@@ -128,6 +130,16 @@ public class CatalogMgr {
             Preconditions.checkState(!catalogs.containsKey(catalogName), "Catalog '%s' already exists", catalogName);
 
             try {
+                // DataOS Heimdall
+                // resolve dataos.depot, if supplied
+                String depot = properties.get(Constants.DATAOS_DEPOT);
+                if (!Strings.isNullOrEmpty(depot)) {
+                    Map<String, String> m = GlobalStateMgr.getCurrentState().getDataOSClient().resolveIcebergDepot(depot);
+                    if (m != null && !m.isEmpty()) {
+                        properties.putAll(m); // Copy all the keys
+                    }
+                }
+
                 Preconditions.checkState(!catalogs.containsKey(catalogName), "Catalog '%s' already exists", catalogName);
                 String serviceName = properties.get("ranger.plugin.hive.service.name");
                 if (serviceName == null || serviceName.isEmpty()) {
@@ -178,7 +190,7 @@ public class CatalogMgr {
         }
     }
 
-    private void reCreatCatalog(Catalog catalog, Map<String, String> alterProperties, boolean isReplay) throws DdlException {
+    private void reCreateCatalog(Catalog catalog, Map<String, String> alterProperties, boolean isReplay) throws DdlException {
         String catalogName = catalog.getName();
         String type = catalog.getType();
         CatalogConnector newConnector = null;
@@ -214,7 +226,6 @@ public class CatalogMgr {
                         } else {
                             Authorizer.getInstance().setAccessControl(catalogName, new NativeAccessController());
                         }
-
                     }
                 } else {
                     Authorizer.getInstance().setAccessControl(catalogName, new RangerHiveAccessController(serviceName));
@@ -305,7 +316,7 @@ public class CatalogMgr {
             return;
         }
 
-        reCreatCatalog(catalog, alterProperties, isReplay);
+        reCreateCatalog(catalog, alterProperties, isReplay);
     }
 
     // TODO @caneGuy we should put internal catalog into catalogmgr
