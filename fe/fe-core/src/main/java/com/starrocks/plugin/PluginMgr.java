@@ -43,6 +43,7 @@ import com.starrocks.common.DdlException;
 import com.starrocks.common.UserException;
 import com.starrocks.common.io.Writable;
 import com.starrocks.common.util.PrintableMap;
+import com.starrocks.dataos.audit.AuditTableLoaderPlugin;
 import com.starrocks.persist.ImageWriter;
 import com.starrocks.persist.metablock.SRMetaBlockEOFException;
 import com.starrocks.persist.metablock.SRMetaBlockException;
@@ -122,6 +123,12 @@ public class PluginMgr implements Writable {
         AuditLogBuilder auditLogBuilder = new AuditLogBuilder();
         if (!registerBuiltinPlugin(auditLogBuilder.getPluginInfo(), auditLogBuilder)) {
             LOG.warn("failed to register audit log builder");
+        }
+
+        // DataOS AuditTableLoader
+        AuditTableLoaderPlugin auditTableLoaderPlugin = new AuditTableLoaderPlugin();
+        if (!registerBuiltinPlugin(auditTableLoaderPlugin.getPluginInfo(), auditTableLoaderPlugin)) {
+            LOG.error("failed to register audit table loader");
         }
 
         // other builtin plugins
