@@ -12,28 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file is based on code available under the Apache license here:
-//   https://github.com/apache/incubator-doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/qe/AuditLogBuilder.java
-
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-
 package com.starrocks.dataos.audit;
 
+import com.starrocks.authentication.AuthenticationMgr;
+import com.starrocks.common.Config;
 import com.starrocks.common.util.DigitalVersion;
 import com.starrocks.plugin.AuditEvent;
 import com.starrocks.plugin.PluginInfo;
@@ -78,18 +60,17 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
     private AuditStreamLoader streamLoader;
     private Thread loadThread;
 
+    private AuditTableManager auditTableManager;
+
     private volatile boolean isClosed = false;
     private volatile boolean isInit = false;
 
     private boolean candidateMvsExists;
     private boolean hitMVsExists;
 
-    private AuditTableManager auditTableManager;
-
     // Conf
     public int maxQueueSize = 1000;
     public int auditEventQueuePollInterval = 5;
-    public int qeSlowLogMs = 5000;
     public int maxStmtLength = 1048576;
     public boolean enableComputeAllQueryDigest = false;
 
@@ -97,18 +78,26 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
     public long maxBatchIntervalSec = 60;
 
     public AuditTableLoaderPlugin() {
-        pluginInfo = new PluginInfo(PluginMgr.BUILTIN_PLUGIN_PREFIX + "AuditTableBuilder", PluginInfo.PluginType.AUDIT,
-                "builtin audit table loader", DigitalVersion.fromString("0.12.0"),
-                DigitalVersion.fromString("1.8.31"), AuditLogBuilder.class.getName(), null, null);
+        pluginInfo = new PluginInfo(PluginMgr.BUILTIN_PLUGIN_PREFIX + "AuditTableLoaderPlugin",
+                PluginInfo.PluginType.AUDIT,
+                "builtin audit table loader",
+                DigitalVersion.fromString("0.12.0"),
+                DigitalVersion.fromString("1.8.31"),
+                AuditTableLoaderPlugin.class.getName(),
+                null,
+                null);
 
-        // Relevant Tables are created
         this.auditTableManager = new AuditTableManager();
-        this.auditTableManager.start();
+        auditTableManager.start();
 
         this.lastLoadTime = System.currentTimeMillis();
 
         this.auditEventQueue = new LinkedBlockingQueue<>(maxQueueSize);
-        this.streamLoader = new AuditStreamLoader();
+        this.streamLoader = new AuditStreamLoader(
+                "127.0.0.1:" + Config.http_port,
+                AuthenticationMgr.ROOT_USER,
+                "",
+                this.auditTableManager.getAuditTableColumnNames());
         this.loadThread = new Thread(new LoadWorker(this.streamLoader), "audit-table-loader-thread");
         this.loadThread.start();
 
@@ -129,9 +118,9 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         this.isClosed = true;
         if (this.loadThread != null) {
             try {
-                this.loadThread.join(60000);
+                this.loadThread.join(AuditTableManager.SLEEP_TIME_SEC * 10000);
             } catch (InterruptedException e) {
-                LOG.debug("encounter exception when closing the audit loader", e);
+                LOG.debug("Error in closing the audit loader", e);
             }
         }
     }
@@ -143,6 +132,7 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
     @Override
     public void exec(AuditEvent event) {
         try {
+            LOG.info("// TODO: Remove this. Query: {}", event.stmt);
             auditEventQueue.add(event);
         } catch (Exception e) {
             // In order to ensure that the system can run normally, here we directly
@@ -178,7 +168,7 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
 
     private void loadIfNecessary(AuditStreamLoader loader) {
         if (!this.auditTableManager.isTableSetup()) {
-            LOG.info("*** Audit Table is not yet set *** ");
+            LOG.warn("Audit Table is not yet set. Collected {} events so far", auditEventQueue.size());
             return;
         }
 
@@ -192,10 +182,10 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         lastLoadTime = System.currentTimeMillis();
         // begin to load
         try {
-            AuditStreamLoader.LoadResponse response = loader.loadBatch(auditBuffer);
-            LOG.debug("audit loader response: {}", response);
+            AuditStreamLoader.LoadResponse response = loader.loadBatch(new StringBuilder(this.auditBuffer));
+            LOG.info("Audit events loaded into {}, response: {}", this.auditTableManager.getAuditTableName(), response);
         } catch (Exception e) {
-            LOG.error("encounter exception when putting current audit batch, discard current batch", e);
+            LOG.error("Error in loading audit events, discard current batch", e);
         } finally {
             // make a new string builder to receive following events.
             this.auditBuffer = new StringBuilder();
@@ -276,11 +266,15 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
                 case DISCONNECTION:
                     return "disconnection";
                 default:
-                    return (event.queryTime > qeSlowLogMs) ? "slow_query" : "query";
+                    return isSlowQuery(event.queryTime) ? "slow_query" : "query";
             }
         } catch (Exception e) {
-            return (event.queryTime > qeSlowLogMs) ? "slow_query" : "query";
+            return isSlowQuery(event.queryTime) ? "slow_query" : "query";
         }
+    }
+
+    private boolean isSlowQuery(long queryTime) {
+        return Config.enable_qe_slow_log && queryTime > Config.qe_slow_log_ms;
     }
 
     private String computeStatementDigest(String stmt) {

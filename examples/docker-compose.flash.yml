@@ -32,7 +32,7 @@ services:
       echo sys_log_format = plaintext >> /opt/starrocks/fe/conf/fe.conf &&
       
       echo dataos_secret = hello-secret >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_path = warehouse/shared/name-a >> /opt/starrocks/fe/conf/fe.conf &&
+      echo aws_s3_path = warehouse/shared/flash_a >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_region = us-east-1 >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_endpoint = http://minio:9000 >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_access_key = admin >> /opt/starrocks/fe/conf/fe.conf &&
@@ -47,10 +47,10 @@ services:
 #      timeout: 5s
 #      retries: 3
 
-  flash-cn:
+  flash-cn-0:
     image: rubiklabs/flash-cn:0.0.3
-    hostname: flash-cn
-    container_name: flash-cn
+    hostname: flash-cn-0
+    container_name: flash-cn-0
     user: root
     environment:
       <<: *flash-environment
@@ -65,7 +65,7 @@ services:
       - -c
       - |
         sleep 15s;
-        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn:9050\";"
+        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn-0:9050\";"
         echo enable_poco_client_for_aws_sdk = false >> /opt/starrocks/cn/conf/cn.conf
         bash /opt/starrocks/cn/bin/start_cn.sh
 #    healthcheck:
@@ -73,5 +73,40 @@ services:
 #      interval: 10s
 #      timeout: 5s
 #      retries: 3
+#
+#  jaeger:
+#    image: jaegertracing/jaeger:2.6.0
+#    hostname: jaeger
+#    container_name: jaeger
+#    environment:
+#      <<: *flash-environment
+#    networks:
+#      flash:
+#    ports:
+#      - "16686:16686"
+#      - "4317:4317"
+#      - "4318:4318"
+#      - "5778:5778"
+#      - "9411:9411"
 
-
+#  flash-cn-1:
+#    image: rubiklabs/flash-cn:0.0.3
+#    hostname: flash-cn-1
+#    container_name: flash-cn-1
+#    user: root
+#    environment:
+#      <<: *flash-environment
+#    depends_on:
+#      - flash-fe
+#    networks:
+#      flash:
+#    ports:
+#      - "8041:8040"
+#    command:
+#      - /bin/bash
+#      - -c
+#      - |
+#        sleep 15s;
+#        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn-1:9050\";"
+#        echo enable_poco_client_for_aws_sdk = false >> /opt/starrocks/cn/conf/cn.conf
+#        bash /opt/starrocks/cn/bin/start_cn.sh
