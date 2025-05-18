@@ -47,3 +47,15 @@ services:
       /usr/bin/mc policy set public minio/warehouse;
       tail -f /dev/null
       "
+
+  rest:
+    image: apache/iceberg-rest-fixture:1.9.0
+    container_name: iceberg-rest
+    networks:
+      flash:
+        aliases:
+          - iceberg-rest.minio
+    ports:
+      - "8181:8181"
+    environment:
+      <<: *flash-environment

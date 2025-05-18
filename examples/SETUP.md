@@ -1,10 +1,8 @@
 ## Stand Up
 ```shell
 
-# MinIO
-docker-compose -f examples/docker-compose.minio.yml up -d
-# Iceberg Catalog 
-docker-compose -f examples/docker-compose.iceberg-rest-catalog.yml up -d
+# MinIO / Iceberg
+docker-compose -f examples/docker-compose.setup.yml up -d
 # Flash
 docker-compose -f examples/docker-compose.flash.yml up        
 ```

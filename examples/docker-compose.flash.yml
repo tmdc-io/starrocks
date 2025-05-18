@@ -32,7 +32,7 @@ services:
       echo sys_log_format = plaintext >> /opt/starrocks/fe/conf/fe.conf &&
       
       echo dataos_secret = hello-secret >> /opt/starrocks/fe/conf/fe.conf &&
-      echo aws_s3_path = flash/shared/name-a >> /opt/starrocks/fe/conf/fe.conf &&
+      echo aws_s3_path = warehouse/shared/name-a >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_region = us-east-1 >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_endpoint = http://minio:9000 >> /opt/starrocks/fe/conf/fe.conf &&
       echo aws_s3_access_key = admin >> /opt/starrocks/fe/conf/fe.conf &&
