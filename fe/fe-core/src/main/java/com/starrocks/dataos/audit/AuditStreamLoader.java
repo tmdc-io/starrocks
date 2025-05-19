@@ -176,17 +176,16 @@ public class AuditStreamLoader {
             // LOG.info(toCurl(feConn));
             int status = feConn.getResponseCode();
             // fe send back http response code TEMPORARY_REDIRECT 307 and new be location, or response code HTTP_OK 200 from nginx
-            int TEMPORARY_REDIRECT_CODE = 307;
-            if (status != TEMPORARY_REDIRECT_CODE && status != HttpURLConnection.HTTP_OK) {
+            if (status != 307 && status != HttpURLConnection.HTTP_OK) {
                 throw new Exception("status is not TEMPORARY_REDIRECT 307 or HTTP_OK 200, status: " + status
                         + ", response: " + getContent(feConn));
             }
             String location = feConn.getHeaderField("Location");
-            if (status == TEMPORARY_REDIRECT_CODE && location == null) {
+            if (status == 307 && location == null) {
                 throw new Exception("redirect location is null");
             }
             // build request and send to new be location, or use old conn if status is 200
-            beConn = status == TEMPORARY_REDIRECT_CODE ? getConnection(location, label) : getConnection(loadUrlStr, label);
+            beConn = status == 307 ? getConnection(location, label) : getConnection(loadUrlStr, label);
             // send data to be
             BufferedOutputStream bos = new BufferedOutputStream(beConn.getOutputStream());
             String content = "[" + sb.toString() + "]";

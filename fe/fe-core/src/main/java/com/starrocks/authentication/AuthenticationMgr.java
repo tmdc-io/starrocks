@@ -130,29 +130,43 @@ public class AuthenticationMgr {
                 LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
-        // TODO: Add Comments
-        // DataOS Heimdall
+        // Installing DataOS Heimdall Plugin
         if (Config.access_control.equalsIgnoreCase(AuthPlugin.HEIMDALL.name())) {
             AuthenticationProviderFactory.installPlugin(
                     HeimdallAuthenticationProvider.PLUGIN_NAME, new HeimdallAuthenticationProvider());
         }
 
-        // default user
+        // default users
         userToAuthenticationInfo = new UserAuthInfoTreeMap();
-        UserAuthenticationInfo info = new UserAuthenticationInfo();
+
+        // create ROOT User
         try {
+            UserAuthenticationInfo info = new UserAuthenticationInfo();
+            if (!Strings.isNullOrEmpty(Config.root_password)) { // Password supplied?
+                // Auth Options!
+                UserAuthOption rootAuth = new UserAuthOption(
+                        Config.root_password, // From config
+                        PlainPasswordAuthenticationProvider.PLUGIN_NAME,
+                        Config.root_password,
+                        true,
+                        NodePosition.ZERO);
+                // Auth Info
+                info = new PlainPasswordAuthenticationProvider().analyzeAuthOption(UserIdentity.ROOT, rootAuth);
+            } else { // Set EMPTY
+                info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
+                info.setPassword(MysqlPassword.EMPTY_PASSWORD);
+            }
+
+            // Make it host agnostic!
             info.setOrigUserHost(ROOT_USER, UserAuthenticationInfo.ANY_HOST);
+
+            // Store
+            userToAuthenticationInfo.put(UserIdentity.ROOT, info);
+            userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
         } catch (AuthenticationException e) {
-            throw new RuntimeException("should not happened!", e);
+            e.printStackTrace();
+            throw new RuntimeException(e);
         }
-        info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
-        // TODO: Add comments about setting ROOT PASSWORD
-        info.setPassword(getRootPasswordBytes());
-
-        LOG.info(">> //TODO: Remove this. root_password: {}", new String(info.getPassword()));
-
-        userToAuthenticationInfo.put(UserIdentity.ROOT, info);
-        userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
     }
 
     private void readLock() {
@@ -721,19 +735,5 @@ public class AuthenticationMgr {
         }
 
         return matchedUserIdentity.getKey();
-    }
-
-    // TODO: Add comments
-    private byte[] getRootPasswordBytes() {
-        String rp = getRootPassword();
-        return !Strings.isNullOrEmpty(rp)
-                ? rp.getBytes(StandardCharsets.UTF_8)
-                : MysqlPassword.EMPTY_PASSWORD;
-    }
-
-    // TODO: Add comments
-    public static String getRootPassword() {
-        String value = System.getenv("ROOT_PASSWORD");
-        return  !Strings.isNullOrEmpty(value) ? value : Config.root_password;
     }
 }

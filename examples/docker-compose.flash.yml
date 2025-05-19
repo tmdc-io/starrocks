@@ -67,7 +67,7 @@ services:
       - -c
       - |
         sleep 15s;
-        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn-0:9050\";"
+        mysql --connect-timeout 20 -h flash-fe -P9030 -uroot --password=animesh -e "ALTER SYSTEM ADD COMPUTE NODE \"flash-cn-0:9050\";"
         echo enable_poco_client_for_aws_sdk = false >> /opt/starrocks/cn/conf/cn.conf
         bash /opt/starrocks/cn/bin/start_cn.sh
 #    healthcheck:
