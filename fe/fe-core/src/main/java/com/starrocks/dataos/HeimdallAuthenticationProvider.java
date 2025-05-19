@@ -43,8 +43,7 @@ import java.util.Arrays;
  * <p>This provider works in conjunction with HeimdallAccessController which handles
  * authorization checks for various operations after authentication is complete.
  */
-public class HeimdallAuthenticationProvider
-        implements AuthenticationProvider {
+public class HeimdallAuthenticationProvider implements AuthenticationProvider {
     private static final Logger LOG = LogManager.getLogger(HeimdallAuthenticationProvider.class);
     public static final String PLUGIN_NAME = AuthPlugin.HEIMDALL.name();
 

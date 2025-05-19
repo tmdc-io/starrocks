@@ -16,6 +16,7 @@
 package com.starrocks.authentication;
 
 import com.google.api.client.util.Lists;
+import com.google.common.base.Strings;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.StarRocksFE;
 import com.starrocks.authorization.AuthorizationMgr;
@@ -129,6 +130,7 @@ public class AuthenticationMgr {
                 LDAPAuthProviderForNative.PLUGIN_NAME, new LDAPAuthProviderForNative());
         AuthenticationProviderFactory.installPlugin(
                 KerberosAuthenticationProvider.PLUGIN_NAME, new KerberosAuthenticationProvider());
+        // TODO: Add Comments
         // DataOS Heimdall
         if (Config.access_control.equalsIgnoreCase(AuthPlugin.HEIMDALL.name())) {
             AuthenticationProviderFactory.installPlugin(
@@ -144,7 +146,11 @@ public class AuthenticationMgr {
             throw new RuntimeException("should not happened!", e);
         }
         info.setAuthPlugin(PlainPasswordAuthenticationProvider.PLUGIN_NAME);
-        info.setPassword(MysqlPassword.EMPTY_PASSWORD);
+        // TODO: Add comments about setting ROOT PASSWORD
+        info.setPassword(getRootPasswordBytes());
+
+        LOG.info(">> //TODO: Remove this. root_password: {}", new String(info.getPassword()));
+
         userToAuthenticationInfo.put(UserIdentity.ROOT, info);
         userNameToProperty.put(UserIdentity.ROOT.getUser(), new UserProperty());
     }
@@ -226,6 +232,7 @@ public class AuthenticationMgr {
         }
     }
 
+    // TODO: Add comments
     // Internal method to look a user up from cache
     public Map.Entry<UserIdentity, UserAuthenticationInfo> getBestMatchedUserIdentityInternal(
             String remoteUser, String remoteHost) {
@@ -239,6 +246,7 @@ public class AuthenticationMgr {
         }
     }
 
+    // TODO: Add comments
     // This is a wrapper method.
     // 1. Checks if the user exists,
     // 2. If not, and Heimdall plugin is installed,
@@ -713,5 +721,19 @@ public class AuthenticationMgr {
         }
 
         return matchedUserIdentity.getKey();
+    }
+
+    // TODO: Add comments
+    private byte[] getRootPasswordBytes() {
+        String rp = getRootPassword();
+        return !Strings.isNullOrEmpty(rp)
+                ? rp.getBytes(StandardCharsets.UTF_8)
+                : MysqlPassword.EMPTY_PASSWORD;
+    }
+
+    // TODO: Add comments
+    public static String getRootPassword() {
+        String value = System.getenv("ROOT_PASSWORD");
+        return  !Strings.isNullOrEmpty(value) ? value : Config.root_password;
     }
 }

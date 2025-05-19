@@ -22,6 +22,7 @@ import com.starrocks.plugin.PluginInfo;
 import com.starrocks.plugin.PluginMgr;
 import com.starrocks.qe.AuditLogBuilder;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.SqlDigestBuilder;
 import com.starrocks.sql.parser.SqlParser;
@@ -112,7 +113,7 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         AuditStreamLoader streamLoader = new AuditStreamLoader(
                 "127.0.0.1:" + Config.http_port,
                 AuthenticationMgr.ROOT_USER,
-                "",
+                AuthenticationMgr.getRootPassword(),
                 this.auditTableManager.getAuditTableColumnNames());
         this.loadThread = new Thread(new LoadWorker(streamLoader), "audit-table-loader-thread");
         this.loadThread.start();

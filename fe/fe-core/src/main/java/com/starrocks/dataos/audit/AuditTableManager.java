@@ -342,7 +342,7 @@ public class AuditTableManager extends FrontendDaemon {
                     new HashDistributionDesc(3, this.getAuditTableDistributionColumnNames()),
                     props,
                     null,
-                    "Query log table");
+                    "Audit log table");
 
             ConnectContext context = StatisticUtils.buildConnectContext();
             context.setDatabase(AUDIT_DB_NAME);
