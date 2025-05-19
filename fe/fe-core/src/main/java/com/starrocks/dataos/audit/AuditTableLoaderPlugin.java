@@ -21,6 +21,7 @@ import com.starrocks.plugin.AuditEvent;
 import com.starrocks.plugin.PluginInfo;
 import com.starrocks.plugin.PluginMgr;
 import com.starrocks.qe.AuditLogBuilder;
+import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.SqlDigestBuilder;
 import com.starrocks.sql.parser.SqlParser;
@@ -48,6 +49,19 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * AuditTableLoaderPlugin is responsible for capturing and persisting query audit events
+ * in StarRocks. It extends AuditLogBuilder to receive audit events and writes them to
+ * a dedicated audit table (_audit_.query_log) via stream load.
+ * <p>
+ * The plugin handles:
+ * 1. Receiving audit events (queries, slow queries, connections, etc.)
+ * 2. Batching them for efficient loading
+ * 3. Computing SQL digests for query fingerprinting
+ * 4. Persisting audit data via stream load
+ * <p>
+ * This audit data can later be queried for monitoring, troubleshooting, and compliance purposes.
+ */
 public class AuditTableLoaderPlugin extends AuditLogBuilder {
     private static final Logger LOG = LogManager.getLogger(AuditTableLoaderPlugin.class);
 
@@ -56,27 +70,29 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
 
     private StringBuilder auditBuffer = new StringBuilder();
     private long lastLoadTime = 0;
-    private BlockingQueue<AuditEvent> auditEventQueue;
-    private AuditStreamLoader streamLoader;
-    private Thread loadThread;
+    private final BlockingQueue<AuditEvent> auditEventQueue;
+    private final Thread loadThread;
 
-    private AuditTableManager auditTableManager;
+    private final AuditTableManager auditTableManager;
 
     private volatile boolean isClosed = false;
-    private volatile boolean isInit = false;
 
-    private boolean candidateMvsExists;
-    private boolean hitMVsExists;
+    private final boolean candidateMvsExists;
+    private final boolean hitMVsExists;
 
-    // Conf
-    public int maxQueueSize = 1000;
-    public int auditEventQueuePollInterval = 5;
-    public int maxStmtLength = 1048576;
-    public boolean enableComputeAllQueryDigest = false;
+    // Configuration parameters
+    public int maxQueueSize = 1000;                    // Maximum number of audit events in the queue
+    public int auditEventQueuePollInterval = 5;        // Interval in seconds to poll the queue
+    public int maxStmtLength = 1048576;                // Maximum length of SQL statements stored
+    public boolean enableComputeAllQueryDigest = false; // Whether to compute digests for all queries
 
-    public long maxBatchSize = 50 * 1024 * 1024;
-    public long maxBatchIntervalSec = 60;
+    public long maxBatchSize = 50 * 1024 * 1024;       // Maximum batch size in bytes
+    public long maxBatchIntervalSec = 10;              // Maximum interval between batch loads
 
+    /**
+     * Constructor initializes the plugin with default settings and starts
+     * the background thread for processing audit events.
+     */
     public AuditTableLoaderPlugin() {
         pluginInfo = new PluginInfo(PluginMgr.BUILTIN_PLUGIN_PREFIX + "AuditTableLoaderPlugin",
                 PluginInfo.PluginType.AUDIT,
@@ -93,25 +109,105 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         this.lastLoadTime = System.currentTimeMillis();
 
         this.auditEventQueue = new LinkedBlockingQueue<>(maxQueueSize);
-        this.streamLoader = new AuditStreamLoader(
+        AuditStreamLoader streamLoader = new AuditStreamLoader(
                 "127.0.0.1:" + Config.http_port,
                 AuthenticationMgr.ROOT_USER,
                 "",
                 this.auditTableManager.getAuditTableColumnNames());
-        this.loadThread = new Thread(new LoadWorker(this.streamLoader), "audit-table-loader-thread");
+        this.loadThread = new Thread(new LoadWorker(streamLoader), "audit-table-loader-thread");
         this.loadThread.start();
 
-        this.candidateMvsExists = hasField(AuditEvent.class, "candidateMvs");
-        this.hitMVsExists = hasField(AuditEvent.class, "hitMVs");
-
-        this.isInit = true;
+        // Check if fields exist through reflection to support backward compatibility
+        this.candidateMvsExists = hasField("candidateMvs");
+        this.hitMVsExists = hasField("hitMVs");
     }
 
+    /**
+     * Specifies plugin installation flags that control initialization timing.
+     * 
+     * @return PLUGIN_INSTALL_EARLY flag which indicates this plugin should be loaded
+     *         during an early phase of the system startup sequence
+     */
     @Override
     public int flags() {
+        // PLUGIN_INSTALL_EARLY ensures the audit plugin is initialized early in the startup sequence
+        // This is critical for:
+        // 1. Capturing all query events from the very beginning of the system's operation
+        // 2. Setting up audit infrastructure before other components start generating events
+        // 3. Ensuring complete audit coverage for compliance and security purposes
         return PLUGIN_INSTALL_EARLY;
     }
 
+    /**
+     * Filters which types of audit events this plugin should process.
+     * <p>
+     * This method acts as a gate that determines which events will be processed by the
+     * exec() method and ultimately stored in the audit table. It currently accepts:
+     * <p>
+     * - AFTER_QUERY: Events generated after a query has completed execution, containing
+     *   the full performance metrics, resource usage, and execution status.
+     * <p>
+     * - CONNECTION: Events related to client connections to the database, which are
+     *   important for tracking user session activity and access patterns.
+     * <p>
+     * Other event types like BEFORE_QUERY (fired before execution) and DISCONNECTION
+     * are filtered out as they either lack complete execution metrics or are less
+     * relevant for audit purposes.
+     * 
+     * @param type The type of audit event to filter
+     * @return true if the event should be processed, false if it should be ignored
+     */
+    @Override
+    public boolean eventFilter(AuditEvent.EventType type) {
+        return type == AuditEvent.EventType.AFTER_QUERY || type == AuditEvent.EventType.CONNECTION;
+    }
+
+    /**
+     * Determines if an audit event represents a "big query" based on configured thresholds.
+     * <p>
+     * A query is considered "big" if it exceeds any of the following thresholds:
+     * 1. CPU time threshold (in seconds, converted to nanoseconds for comparison)
+     * 2. Data scan bytes threshold
+     * 3. Number of rows scanned threshold
+     * <p>
+     * Users can control these thresholds via the following session or global variables:
+     * - big_query_log_cpu_second_threshold: Default = 480 seconds (8 minutes)
+     *   SET GLOBAL big_query_log_cpu_second_threshold = 600;  // Set to 10 minutes
+     * <p>
+     * - big_query_log_scan_bytes_threshold: Default = 10737418240 bytes (10 GB)
+     *   SET GLOBAL big_query_log_scan_bytes_threshold = 21474836480;  // Set to 20 GB
+     * <p>
+     * - big_query_log_scan_rows_threshold: Default = 1500000000 rows
+     *   SET GLOBAL big_query_log_scan_rows_threshold = 3000000000;  // Set to 3 billion rows
+     * <p>
+     * Additionally, big query logging must be enabled with:
+     * SET GLOBAL enable_big_query_log = true;
+     * <p>
+     * Big queries are resource-intensive operations that may require special monitoring
+     * or handling. This method is used to identify such queries for potential special
+     * treatment in the logging system. Identified big queries are logged to 
+     * fe/log/fe.big_query.log for analysis.
+     * <p>
+     * Thresholds of -1 indicate that the specific threshold check is disabled.
+     * 
+     * @param event The audit event to evaluate
+     * @return true if the event represents a big query, false otherwise
+     * @see com.starrocks.common.Config for default values
+     */
+    private boolean isBigQuery(AuditEvent event) {
+        if (event.bigQueryLogCPUSecondThreshold >= 0 &&
+                event.cpuCostNs > event.bigQueryLogCPUSecondThreshold * 1000000000L) {
+            return true;
+        }
+        if (event.bigQueryLogScanBytesThreshold >= 0 && event.scanBytes > event.bigQueryLogScanBytesThreshold) {
+            return true;
+        }
+        return event.bigQueryLogScanRowsThreshold >= 0 && event.scanRows > event.bigQueryLogScanRowsThreshold;
+    }
+
+    /**
+     * Properly close resources when the plugin is unloaded
+     */
     @Override
     public void close() throws IOException {
         super.close();
@@ -129,10 +225,16 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         return pluginInfo;
     }
 
+    /**
+     * Entry point for audit events. Receives events and places them in the queue
+     * for asynchronous processing.
+     * 
+     * @param event The audit event to be processed
+     */
     @Override
     public void exec(AuditEvent event) {
         try {
-            LOG.info("// TODO: Remove this. Query: {}", event.stmt);
+            LOG.info("AuditEvent: user = {}, isQuery = {}, query = {}", event.authorizedUser, event.isQuery, event.stmt);
             auditEventQueue.add(event);
         } catch (Exception e) {
             // In order to ensure that the system can run normally, here we directly
@@ -142,8 +244,12 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
     }
 
+    /**
+     * Worker thread that processes audit events from the queue and loads them into
+     * the audit table when batch size or time thresholds are reached.
+     */
     private class LoadWorker implements Runnable {
-        private AuditStreamLoader loader;
+        private final AuditStreamLoader loader;
 
         public LoadWorker(AuditStreamLoader loader) {
             this.loader = loader;
@@ -166,6 +272,12 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
     }
 
+    /**
+     * Determines if the current batch should be loaded into the audit table based on
+     * size or time thresholds.
+     * 
+     * @param loader The stream loader for loading data
+     */
     private void loadIfNecessary(AuditStreamLoader loader) {
         if (!this.auditTableManager.isTableSetup()) {
             LOG.warn("Audit Table is not yet set. Collected {} events so far", auditEventQueue.size());
@@ -192,6 +304,9 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
     }
 
+    /**
+     * Formats a timestamp as a datetime string
+     */
     public static synchronized String longToTimeString(long timeStamp) {
         if (timeStamp <= 0L) {
             return DATETIME_FORMAT.format(new Date());
@@ -199,8 +314,11 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         return DATETIME_FORMAT.format(new Date(timeStamp));
     }
 
-    private boolean hasField(Class<?> clazz, String fieldName) {
-        Field[] fields = clazz.getDeclaredFields();
+    /**
+     * Checks if a field exists in a class using reflection
+     */
+    private boolean hasField(String fieldName) {
+        Field[] fields = AuditEvent.class.getDeclaredFields();
         for (Field field : fields) {
             if (field.getName().equals(fieldName)) {
                 return true;
@@ -209,9 +327,13 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         return false;
     }
 
+    /**
+     * Assembles a JSON representation of an audit event and adds it to the buffer
+     */
     private void assembleAudit(AuditEvent event) {
         String queryType = getQueryType(event);
         int isQuery = event.isQuery ? 1 : 0;
+        int isBigQuery = isBigQuery(event) ? 1 : 0;
         // Compute digest for all queries
         if (enableComputeAllQueryDigest && (event.digest == null || StringUtils.isBlank(event.digest))) {
             event.digest = computeStatementDigest(event.stmt);
@@ -219,33 +341,34 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
         String candidateMvsVal = candidateMvsExists ? event.candidateMvs : "";
         String hitMVsVal = hitMVsExists ? event.hitMVs : "";
-        String content = "{\"queryId\":\"" + getQueryId(queryType, event) + "\"," +
+        String content = "{\"query_id\":\"" + getQueryId(queryType, event) + "\"," +
                 "\"timestamp\":\"" + longToTimeString(event.timestamp) + "\"," +
-                "\"queryType\":\"" + queryType + "\"," +
-                "\"clientIp\":\"" + event.clientIp + "\"," +
+                "\"query_type\":\"" + queryType + "\"," +
+                "\"client_ip\":\"" + event.clientIp + "\"," +
                 "\"user\":\"" + event.user + "\"," +
-                "\"authorizedUser\":\"" + event.authorizedUser + "\"," +
-                "\"resourceGroup\":\"" + event.resourceGroup + "\"," +
+                "\"authorized_user\":\"" + event.authorizedUser + "\"," +
+                "\"resource_group\":\"" + event.resourceGroup + "\"," +
                 "\"catalog\":\"" + event.catalog + "\"," +
                 "\"db\":\"" + event.db + "\"," +
                 "\"state\":\"" + event.state + "\"," +
-                "\"errorCode\":\"" + event.errorCode + "\"," +
-                "\"queryTime\":" + event.queryTime + "," +
-                "\"scanBytes\":" + event.scanBytes + "," +
-                "\"scanRows\":" + event.scanRows + "," +
-                "\"returnRows\":" + event.returnRows + "," +
-                "\"cpuCostNs\":" + event.cpuCostNs + "," +
-                "\"memCostBytes\":" + event.memCostBytes + "," +
-                "\"stmtId\":" + event.stmtId + "," +
-                "\"isQuery\":" + isQuery + "," +
-                "\"feIp\":\"" + event.feIp + "\"," +
+                "\"error_code\":\"" + event.errorCode + "\"," +
+                "\"query_time\":" + event.queryTime + "," +
+                "\"scan_bytes\":" + event.scanBytes + "," +
+                "\"scan_rows\":" + event.scanRows + "," +
+                "\"return_rows\":" + event.returnRows + "," +
+                "\"cpu_cost_ns\":" + event.cpuCostNs + "," +
+                "\"mem_cost_bytes\":" + event.memCostBytes + "," +
+                "\"stmt_id\":" + event.stmtId + "," +
+                "\"is_query\":" + isQuery + "," +
+                "\"is_big_query\":" + isBigQuery + "," +
+                "\"fe_ip\":\"" + event.feIp + "\"," +
                 "\"stmt\":\"" + truncateByBytes(event.stmt) + "\"," +
                 "\"digest\":\"" + event.digest + "\"," +
-                "\"planCpuCosts\":" + event.planCpuCosts + "," +
-                "\"planMemCosts\":" + event.planMemCosts + "," +
-                "\"pendingTimeMs\":" + event.pendingTimeMs + "," +
-                "\"candidateMVs\":\"" + candidateMvsVal + "\"," +
-                "\"hitMvs\":\"" + hitMVsVal + "\"," +
+                "\"plan_cpu_costs\":" + event.planCpuCosts + "," +
+                "\"plan_mem_costs\":" + event.planMemCosts + "," +
+                "\"pending_time_ms\":" + event.pendingTimeMs + "," +
+                "\"candidate_mvs\":\"" + candidateMvsVal + "\"," +
+                "\"hit_mvs\":\"" + hitMVsVal + "\"," +
                 "\"warehouse\":\"" + event.warehouse + "\"}";
         if (auditBuffer.length() > 0) {
             auditBuffer.append(",");
@@ -253,10 +376,16 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         auditBuffer.append(content);
     }
 
+    /**
+     * Generates a query ID if one doesn't exist
+     */
     private String getQueryId(String prefix, AuditEvent event) {
         return (Objects.isNull(event.queryId) || event.queryId.isEmpty()) ? prefix + "-" + UUID.randomUUID() : event.queryId;
     }
 
+    /**
+     * Determines the query type based on event type and duration
+     */
     private String getQueryType(AuditEvent event) {
         try {
             assert event != null;
@@ -273,12 +402,20 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
     }
 
+    /**
+     * Determines if a query is considered "slow" based on configuration
+     */
     private boolean isSlowQuery(long queryTime) {
         return Config.enable_qe_slow_log && queryTime > Config.qe_slow_log_ms;
     }
 
+    /**
+     * Computes a digest (fingerprint) for a SQL statement
+     */
     private String computeStatementDigest(String stmt) {
-        List<StatementBase> stmts = SqlParser.parse(stmt, 32);
+        SessionVariable sessionVariable = new SessionVariable();
+        sessionVariable.setSqlMode(32);
+        List<StatementBase> stmts = SqlParser.parse(stmt, sessionVariable);
         StatementBase queryStmt = stmts.get(stmts.size() - 1);
 
         if (queryStmt == null) {
@@ -295,6 +432,13 @@ public class AuditTableLoaderPlugin extends AuditLogBuilder {
         }
     }
 
+    /**
+     * Truncates a string to a maximum byte length while preserving UTF-8 character integrity.
+     * This prevents invalid UTF-8 sequences when truncating strings.
+     * 
+     * @param str The string to truncate
+     * @return The truncated string with valid UTF-8 characters
+     */
     private String truncateByBytes(String str) {
         int maxLen = Math.min(maxStmtLength, str.getBytes().length);
         if (maxLen >= str.getBytes().length) {
